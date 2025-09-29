@@ -106,5 +106,5 @@ copepod_dat <- ecomonall |>
 # Save out -----------------------------------------------------------------
 
 #saveRDS(copepod_dat, here::here("zooplankton/outputs/test_VAST_input.rds"))
-saveRDS(copepod_dat, here::here("zooplankton/outputs/copepod_VAST_input.rds"))
+saveRDS(copepod_dat, here::here("zooplankton/outputs/zooplankton_VAST_input.rds"))
 

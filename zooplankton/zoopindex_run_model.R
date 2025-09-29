@@ -23,9 +23,11 @@
 library(here)
 library(dplyr)
 library(VAST)
+# rlang
 
 # Functions
-SOEinputs <- function(infile, season, stratlook, outfile) {
+
+SOEinputs <- function(infile, season, stratlook, taxa, outfile) {
   
   splitoutput <- read.csv(infile)
   zoopindex <- splitoutput %>%
@@ -61,6 +63,25 @@ extract_cog <- function(model_fit) {
   return(cog)
 }
 
+SOEinputsCOG <- function(infile, season, taxa, outfile) {
+  cogout <- readRDS(infile)
+  zoocog <- as.data.frame(cogout$COG_Table) |>
+    dplyr::mutate(direction = ifelse(m==1, "Eastward", "Northward")) |>
+    dplyr::select("Time" = Year,
+                  "Center of Gravity" = COG_hat, 
+                  "Center of Gravity SE" = SE,
+                  direction) |>
+    tidyr::pivot_longer(c("Center of Gravity", "Center of Gravity SE"), 
+                        names_to = "Var", values_to = "Value") |>
+    #direction into Var
+    tidyr::unite(Var, direction:Var, sep = " ") |>
+    dplyr::mutate(Units = "km",
+                  EPU = "ALLEPU") |>
+    dplyr::select(Time, Var, Value, EPU, Units)
+  
+  zoocog$Var <- stringr::str_c(stringr::str_to_title(season), stringr::str_to_title(taxa), zoocog$Var, sep = " ")
+  saveRDS(zoocog, outfile)
+}
 ## Load main dataset ----
 
 #Read in main data created in zooindex_process_input_data.R
@@ -156,12 +177,27 @@ strata.limits <- as.list(c("AllEPU" = allEPU2,
                            "SS" = SS2
 ))
 
+
+# this is run within the loop if you run the models all at once for each taxa, here run it first and use for all models
+settings <- make_settings( n_x = 500, 
+                           Region = "northwest_atlantic",
+                           Version = "VAST_v14_0_1", #needed to prevent error from newer dev version number
+                           #strata.limits = list('All_areas' = 1:1e5), full area
+                           strata.limits = strata.limits,
+                           purpose = "index2", 
+                           bias.correct = TRUE,
+                           use_anisotropy = use_anisotropy,
+                           FieldConfig = FieldConfig,
+                           RhoConfig = RhoConfig, #always default
+                           OverdispersionConfig = OverdispersionConfig
+)
+
 ## Euphasiid data prep ---- ----##################################################################
 
 #Create three separate data frames using a single loop
 
 # Create a list to hold the configurations for each variable (annual vs seasonal)
-# This can be used for all taxa
+# This can be used for euph and zoopvol
 configs <- list(
   ann = list(
     season_filter = FALSE
@@ -301,20 +337,6 @@ for(season in mod.season){
 
 ## Euphausiid model runs (separately by season, no annual) ---------------------------------------
 
-# this is run within the loop if you run the models all at once, here run it first and use for all models
-settings <- make_settings( n_x = 500, 
-                           Region = "northwest_atlantic",
-                           Version = "VAST_v14_0_1", #needed to prevent error from newer dev version number
-                           #strata.limits = list('All_areas' = 1:1e5), full area
-                           strata.limits = strata.limits,
-                           purpose = "index2", 
-                           bias.correct = TRUE,
-                           use_anisotropy = use_anisotropy,
-                           FieldConfig = FieldConfig,
-                           RhoConfig = RhoConfig, #always default
-                           OverdispersionConfig = OverdispersionConfig
-)
-
 # Fall first, no DOY or temp covariate
 working_dir <- here::here(sprintf("zooplankton/outputs/fall_euph_model"))
 
@@ -382,7 +404,7 @@ saveRDS(cog, here::here(working_dir, paste0("spring_cog.rds")))
 ## Zooplankton Volume data prep ---- ----##################################################################
 
 #Create three separate data frames using a single loop
-# use same seasonal configurations as in euphausiids
+# use same seasonal configurations as for euphausiids
 
 # Loop through the configurations to generate each data frame
 for (cfg_name in names(configs)) {
@@ -421,19 +443,7 @@ for (cfg_name in names(configs)) {
   assign(paste0("zoopvol_stn_", cfg_name), df)
 }
 
-## Euphausiid model runs (separately by season, no annual) ---------------------------------------
-settings <- make_settings( n_x = 500, 
-                           Region = "northwest_atlantic",
-                           Version = "VAST_v14_0_1", #needed to prevent error from newer dev version number
-                           #strata.limits = list('All_areas' = 1:1e5), full area
-                           strata.limits = strata.limits,
-                           purpose = "index2", 
-                           bias.correct = TRUE,
-                           use_anisotropy = use_anisotropy,
-                           FieldConfig = FieldConfig,
-                           RhoConfig = RhoConfig, #always default
-                           OverdispersionConfig = OverdispersionConfig
-)
+## Zooplankton Volume model runs (separately by season, no annual) ---------------------------------------
 
 # Fall first, no DOY or temp covariate
 working_dir <- here::here(sprintf("zooplankton/outputs/fall_zoopvol_model"))
@@ -504,7 +514,336 @@ saveRDS(cog, here::here(working_dir, paste0("spring_cog.rds")))
 
 
 
+
+# Fall (no DOY or temp covariates)
+working_dir <- here::here(sprintf("zooplankton/outputs/fall_zoopvol_model"))
+
+if (!dir.exists(working_dir)) {
+  dir.create(working_dir)
+}
+
+fit <- fit_model(
+  settings = settings, 
+  #extrapolation_list = New_Extrapolation_List,
+  Lat_i = zoopvol_stn_fall$Lat, 
+  Lon_i = zoopvol_stn_fall$Lon, 
+  t_i = zoopvol_stn_fall$Year, 
+  b_i = as_units(zoopvol_stn_fall[,'Catch_g'], 'g'),
+  a_i = rep(1, nrow(zoopvol_stn_fall)),
+  v_i = zoopvol_stn_fall$Vessel,
+  #Q_ik = as.matrix(zoopvol_stn_fall[,c("Catch_g")]),
+  #Use_REML = TRUE,
+  #test_fit = FALSE,
+  working_dir = paste0(working_dir, "/"))
+
+saveRDS(fit, file = paste0(working_dir, "/fit.rds"))
+#fit <- readRDS(paste0(working_dir, "/fit.rds"))
+
+# Plot results
+plot( fit, working_dir = paste0(working_dir, "/"))
+
+# extract center of gravity
+cog <- extract_cog(fit)
+saveRDS(cog, here::here(working_dir, paste0("fall_cog.rds"))) 
+
+###
+
+# run spring models, also with no DOY or temp covariates
+working_dir <- here::here(sprintf("zooplankton/outputs/spring_zoopvol_model"))
+
+if (!dir.exists(working_dir)) {
+  dir.create(working_dir)
+}
+
+fit <- fit_model(
+  settings = settings, 
+  #extrapolation_list = New_Extrapolation_List,
+  Lat_i = zoopvol_stn_spring$Lat, 
+  Lon_i = zoopvol_stn_spring$Lon, 
+  t_i = zoopvol_stn_spring$Year, 
+  b_i = as_units(zoopvol_stn_spring[,'Catch_g'], 'g'),
+  a_i = rep(1, nrow(zoopvol_stn_spring)),
+  v_i = zoopvol_stn_spring$Vessel,
+  #Q_ik = as.matrix(zoopvol_stn_spring[,c("Catch_g")]),
+  #Use_REML = TRUE,
+  #test_fit = FALSE,
+  working_dir = paste0(working_dir, "/"))
+
+saveRDS(fit, file = paste0(working_dir, "/fit.rds"))
+#fit <- readRDS(paste0(working_dir, "/fit.rds"))
+
+# Plot results
+plot( fit, working_dir = paste0(working_dir, "/"))
+
+# extract center of gravity
+cog <- extract_cog(fit)
+saveRDS(cog, here::here(working_dir, paste0("spring_cog.rds"))) 
+
+## Copepod data prep ---- ----##################################################################
+
+# --- New Configuration for Taxa and Season ---
+
+# Define the list of copepod taxa short names and their corresponding column names
+# should probably add argument for euph and zoopvol to do this all at once in one loop at the top of the script
+taxa_cols <- list(
+  "smcope" = "smallcopeSOE_100m3",
+  "calfin" = "calfin_100m3", 
+  "lgcope" = "lgcopeALL_100m3"     
+)
+
+# Define the season configurations (No annual)
+season_configs <- list(
+  fall = "FALL",
+  spring = "SPRING"
+)
+
+# --- Data Processing Loop ---
+
+# Outer loop: Iterate over each taxa
+for (taxa_name in names(taxa_cols)) {
+  taxa_col_name <- taxa_cols[[taxa_name]]
+  
+  # Inner loop: Iterate over each season
+  for (season_name in names(season_configs)) {
+    season_filter_value <- season_configs[[season_name]]
+    
+    # Build the data frame for the current taxa and season
+    df <- copepod_dat %>%
+      # Filter for the specific season and year
+      filter(
+        season_ng == season_filter_value, # Only Fall or Spring seasons
+        year > 1981
+      ) %>%
+      # Apply common mutations
+      mutate(
+        AreaSwept_km2 = 1, #Elizabeth's code
+        Vessel = 1,
+        Dayofyear = lubridate::yday(date) #as.numeric(as.factor(vessel))-1
+      ) %>%
+      # Dynamically select the Catch_g column based on the current taxa
+      dplyr::select(
+        # Use !!rlang::sym() for dynamic column selection
+        Catch_g = !!rlang::sym(taxa_col_name),
+        Year = year,
+        Vessel,
+        AreaSwept_km2,
+        Lat = lat,
+        Lon = lon,
+        # sstfill,
+        Dayofyear
+      ) %>%
+      # Apply final steps: remove NA values and convert to a data frame
+      na.omit() %>%
+      as.data.frame()
+    
+    # Assign the resulting data frame using the taxa name and season name
+    # e.g., 'euph_fall', 'calfin_spring'
+    assign(paste0(taxa_name, "_", season_name), df)
+  }
+}
+
+## Copepod model runs (separately by season, no annual) ---------------------------------------
+  ## small Copepod models ----
+
+# Fall first, no DOY or temp covariate
+working_dir <- here::here(sprintf("zooplankton/outputs/fall_smcope_model"))
+
+if (!dir.exists(working_dir)) {
+  dir.create(working_dir)
+}
+
+fit <- fit_model(
+  settings = settings, 
+  #extrapolation_list = New_Extrapolation_List,
+  Lat_i = smcope_fall$Lat, 
+  Lon_i = smcope_fall$Lon, 
+  t_i = smcope_fall$Year, 
+  b_i = as_units(smcope_fall[,'Catch_g'], 'g'),
+  a_i = rep(1, nrow(smcope_fall)),
+  v_i = smcope_fall$Vessel,
+  #Q_ik = as.matrix(smcope_fall[,c("Catch_g")]),
+  #Use_REML = TRUE,
+  #test_fit = FALSE,
+  working_dir = paste0(working_dir, "/"))
+
+saveRDS(fit, file = paste0(working_dir, "/fit.rds"))
+#fit <- readRDS(paste0(working_dir, "/fit.rds"))
+
+# Plot results
+plot( fit, working_dir = paste0(working_dir, "/"))
+
+# extract center of gravity
+cog <- extract_cog(fit)
+saveRDS(cog, here::here(working_dir, paste0("fall_cog.rds"))) 
+
+###
+
+# run spring models, also with no DOY or temp covariates
+working_dir <- here::here(sprintf("zooplankton/outputs/spring_smcope_model"))
+
+if (!dir.exists(working_dir)) {
+  dir.create(working_dir)
+}
+
+fit <- fit_model(
+  settings = settings, 
+  #extrapolation_list = New_Extrapolation_List,
+  Lat_i = smcope_spring$Lat, 
+  Lon_i = smcope_spring$Lon, 
+  t_i = smcope_spring$Year, 
+  b_i = as_units(smcope_spring[,'Catch_g'], 'g'),
+  a_i = rep(1, nrow(smcope_spring)),
+  v_i = smcope_spring$Vessel,
+  #Q_ik = as.matrix(smcope_spring[,c("Catch_g")]),
+  #Use_REML = TRUE,
+  #test_fit = FALSE,
+  working_dir = paste0(working_dir, "/"))
+
+saveRDS(fit, file = paste0(working_dir, "/fit.rds"))
+#fit <- readRDS(paste0(working_dir, "/fit.rds"))
+
+# Plot results
+plot( fit, working_dir = paste0(working_dir, "/"))
+
+# extract center of gravity
+cog <- extract_cog(fit)
+saveRDS(cog, here::here(working_dir, paste0("spring_cog.rds"))) 
+
+  ## large Copepod models ----
+
+# Fall first, no DOY or temp covariate
+working_dir <- here::here(sprintf("zooplankton/outputs/fall_lgcope_model"))
+
+if (!dir.exists(working_dir)) {
+  dir.create(working_dir)
+}
+
+fit <- fit_model(
+  settings = settings, 
+  #extrapolation_list = New_Extrapolation_List,
+  Lat_i = lgcope_fall$Lat, 
+  Lon_i = lgcope_fall$Lon, 
+  t_i = lgcope_fall$Year, 
+  b_i = as_units(lgcope_fall[,'Catch_g'], 'g'),
+  a_i = rep(1, nrow(lgcope_fall)),
+  v_i = lgcope_fall$Vessel,
+  #Q_ik = as.matrix(lgcope_fall[,c("Catch_g")]),
+  #Use_REML = TRUE,
+  #test_fit = FALSE,
+  working_dir = paste0(working_dir, "/"))
+
+saveRDS(fit, file = paste0(working_dir, "/fit.rds"))
+#fit <- readRDS(paste0(working_dir, "/fit.rds"))
+
+# Plot results
+plot( fit, working_dir = paste0(working_dir, "/"))
+
+# extract center of gravity
+cog <- extract_cog(fit)
+saveRDS(cog, here::here(working_dir, paste0("fall_cog.rds"))) 
+
+###
+
+# run spring models, also with no DOY or temp covariates
+working_dir <- here::here(sprintf("zooplankton/outputs/spring_lgcope_model"))
+
+if (!dir.exists(working_dir)) {
+  dir.create(working_dir)
+}
+
+fit <- fit_model(
+  settings = settings, 
+  #extrapolation_list = New_Extrapolation_List,
+  Lat_i = lgcope_spring$Lat, 
+  Lon_i = lgcope_spring$Lon, 
+  t_i = lgcope_spring$Year, 
+  b_i = as_units(lgcope_spring[,'Catch_g'], 'g'),
+  a_i = rep(1, nrow(lgcope_spring)),
+  v_i = lgcope_spring$Vessel,
+  #Q_ik = as.matrix(lgcope_spring[,c("Catch_g")]),
+  #Use_REML = TRUE,
+  #test_fit = FALSE,
+  working_dir = paste0(working_dir, "/"))
+
+saveRDS(fit, file = paste0(working_dir, "/fit.rds"))
+#fit <- readRDS(paste0(working_dir, "/fit.rds"))
+
+# Plot results
+plot( fit, working_dir = paste0(working_dir, "/"))
+
+# extract center of gravity
+cog <- extract_cog(fit)
+saveRDS(cog, here::here(working_dir, paste0("spring_cog.rds"))) 
+
+  ## calfin models ----
+
+# Fall first, no DOY or temp covariate
+working_dir <- here::here(sprintf("zooplankton/outputs/fall_calfin_model"))
+
+if (!dir.exists(working_dir)) {
+  dir.create(working_dir)
+}
+
+fit <- fit_model(
+  settings = settings, 
+  #extrapolation_list = New_Extrapolation_List,
+  Lat_i = calfin_fall$Lat, 
+  Lon_i = calfin_fall$Lon, 
+  t_i = calfin_fall$Year, 
+  b_i = as_units(calfin_fall[,'Catch_g'], 'g'),
+  a_i = rep(1, nrow(calfin_fall)),
+  v_i = calfin_fall$Vessel,
+  #Q_ik = as.matrix(calfin_fall[,c("Catch_g")]),
+  #Use_REML = TRUE,
+  #test_fit = FALSE,
+  working_dir = paste0(working_dir, "/"))
+
+saveRDS(fit, file = paste0(working_dir, "/fit.rds"))
+#fit <- readRDS(paste0(working_dir, "/fit.rds"))
+
+# Plot results
+plot( fit, working_dir = paste0(working_dir, "/"))
+
+# extract center of gravity
+cog <- extract_cog(fit)
+saveRDS(cog, here::here(working_dir, paste0("fall_cog.rds"))) 
+
+###
+
+# run spring models, also with no DOY or temp covariates
+working_dir <- here::here(sprintf("zooplankton/outputs/spring_calfin_model"))
+
+if (!dir.exists(working_dir)) {
+  dir.create(working_dir)
+}
+
+fit <- fit_model(
+  settings = settings, 
+  #extrapolation_list = New_Extrapolation_List,
+  Lat_i = calfin_spring$Lat, 
+  Lon_i = calfin_spring$Lon, 
+  t_i = calfin_spring$Year, 
+  b_i = as_units(calfin_spring[,'Catch_g'], 'g'),
+  a_i = rep(1, nrow(calfin_spring)),
+  v_i = calfin_spring$Vessel,
+  #Q_ik = as.matrix(calfin_spring[,c("Catch_g")]),
+  #Use_REML = TRUE,
+  #test_fit = FALSE,
+  working_dir = paste0(working_dir, "/"))
+
+saveRDS(fit, file = paste0(working_dir, "/fit.rds"))
+#fit <- readRDS(paste0(working_dir, "/fit.rds"))
+
+# Plot results
+plot( fit, working_dir = paste0(working_dir, "/"))
+
+# extract center of gravity
+cog <- extract_cog(fit)
+saveRDS(cog, here::here(working_dir, paste0("spring_cog.rds"))) 
+
 ## Create SOE indices ----
+# this should probably be a loop
+
 # set up areas
 stratlook_EPUonly <- data.frame(
   Stratum = c(
@@ -515,35 +854,144 @@ stratlook_EPUonly <- data.frame(
     "Stratum_5"),
   Region = c("AllEPU", "MAB", "GB", "GOM", "SS")
 )
-
-# Create fall indices
+  ## Fall indices ----
 # Euphausiids
 SOEinputs(
-  infile = "zooplankton/outputs/fall__euph_model/Index.csv",
+  infile = "zooplankton/outputs/fall_euph_model/Index.csv",
   season = "Fall",
+  taxa = "Euph",
   stratlook = stratlook_EPUonly,
-  outfile = paste0(
-    "zooplankton/outputs/falleuphindex_",
-    Sys.Date(),
-    ".rds"
-  )
-)
+  outfile = paste0("zooplankton/outputs/Indices/fallEuphindex_",Sys.Date(),".rds"))
 
 SOEinputsCOG(
-  infile = "zooplankton/outputs/fall__euph_model/fall_cog.rds",
+  infile = "zooplankton/outputs/fall_euph_model/fall_cog.rds",
   season = "Fall",
-  outfile = paste0("zooplankton/outputs/fall__euph_model/falleuphcog", Sys.Date(), ".rds")
-)
+  taxa = "Euph",
+  outfile = paste0("zooplankton/outputs/Indices/fallEuphcog", Sys.Date(), ".rds"))
 
-
-# Create spring indices
+# Zooplankton volume
 SOEinputs(
-  infile = "zooplankton/outputs/spring_model/Index.csv",
-  season = "Spring",
+  infile = "zooplankton/outputs/fall_zoopvol_model/Index.csv",
+  season = "Fall",
+  taxa = "Zoopvol",
   stratlook = stratlook_EPUonly,
-  outfile = paste0(
-    "zooplankton/outputs/springeuphindex_",
-    Sys.Date(),
-    ".rds"
-  )
-)
+  outfile = paste0("zooplankton/outputs/Indices/fallZoopvolindex_",Sys.Date(),".rds"))
+
+SOEinputsCOG(
+  infile = "zooplankton/outputs/fall_zoopvol_model/fall_cog.rds",
+  season = "Fall",
+  taxa = "Zoopvol",
+  outfile = paste0("zooplankton/outputs/Indices/fallZoopvolcog", Sys.Date(), ".rds"))
+
+## small Copepod
+SOEinputs(
+  infile = "zooplankton/outputs/fall_smcope_model/Index.csv",
+  season = "Fall",
+  taxa = "Smcope",
+  stratlook = stratlook_EPUonly,
+  outfile = paste0("zooplankton/outputs/Indices/fallSmcopeindex_",Sys.Date(),".rds"))
+
+SOEinputsCOG(
+  infile = "zooplankton/outputs/fall_smcope_model/fall_cog.rds",
+  season = "Fall",
+  taxa = "Smcope",
+  outfile = paste0("zooplankton/outputs/Indices/fallSmcopecog", Sys.Date(), ".rds"))
+
+## large Copepod
+SOEinputs(
+  infile = "zooplankton/outputs/fall_lgcope_model/Index.csv",
+  season = "Fall",
+  taxa = "Lgcope",
+  stratlook = stratlook_EPUonly,
+  outfile = paste0("zooplankton/outputs/Indices/fallLgcopeindex_",Sys.Date(),".rds"))
+
+SOEinputsCOG(
+  infile = "zooplankton/outputs/fall_lgcope_model/fall_cog.rds",
+  season = "Fall",
+  taxa = "Lgcope",
+  outfile = paste0("zooplankton/outputs/Indices/fallLgcopecog", Sys.Date(), ".rds"))
+
+## calanus finmarchicus
+SOEinputs(
+  infile = "zooplankton/outputs/fall_calfin_model/Index.csv",
+  season = "Fall",
+  taxa = "Calfin",
+  stratlook = stratlook_EPUonly,
+  outfile = paste0("zooplankton/outputs/Indices/fallCalfinindex_",Sys.Date(),".rds"))
+
+SOEinputsCOG(
+  infile = "zooplankton/outputs/fall_calfin_model/fall_cog.rds",
+  season = "Fall",
+  taxa = "Calfin",
+  outfile = paste0("zooplankton/outputs/Indices/fallCalfincog", Sys.Date(), ".rds"))
+
+## Spring indices ----
+# Euphausiids
+SOEinputs(
+  infile = "zooplankton/outputs/spring_euph_model/Index.csv",
+  season = "Spring",
+  taxa = "Euph",
+  stratlook = stratlook_EPUonly,
+  outfile = paste0("zooplankton/outputs/Indices/springEuphindex_",Sys.Date(),".rds"))
+
+SOEinputsCOG(
+  infile = "zooplankton/outputs/spring_euph_model/spring_cog.rds",
+  season = "Spring",
+  taxa = "Euph",
+  outfile = paste0("zooplankton/outputs/Indices/springEuphcog", Sys.Date(), ".rds"))
+
+# Zooplankton volume
+SOEinputs(
+  infile = "zooplankton/outputs/spring_zoopvol_model/Index.csv",
+  season = "Spring",
+  taxa = "Zoopvol",
+  stratlook = stratlook_EPUonly,
+  outfile = paste0("zooplankton/outputs/Indices/springZoopvolindex_",Sys.Date(),".rds"))
+
+SOEinputsCOG(
+  infile = "zooplankton/outputs/spring_zoopvol_model/spring_cog.rds",
+  season = "Spring",
+  taxa = "Zoopvol",
+  outfile = paste0("zooplankton/outputs/Indices/springZoopvolcog", Sys.Date(), ".rds"))
+
+## small Copepod
+SOEinputs(
+  infile = "zooplankton/outputs/spring_smcope_model/Index.csv",
+  season = "Spring",
+  taxa = "Smcope",
+  stratlook = stratlook_EPUonly,
+  outfile = paste0("zooplankton/outputs/Indices/springSmcopeindex_",Sys.Date(),".rds"))
+
+SOEinputsCOG(
+  infile = "zooplankton/outputs/spring_smcope_model/spring_cog.rds",
+  season = "Spring",
+  taxa = "Smcope",
+  outfile = paste0("zooplankton/outputs/Indices/springSmcopecog", Sys.Date(), ".rds"))
+
+## large Copepod
+SOEinputs(
+  infile = "zooplankton/outputs/spring_lgcope_model/Index.csv",
+  season = "Spring",
+  taxa = "Lgcope",
+  stratlook = stratlook_EPUonly,
+  outfile = paste0("zooplankton/outputs/Indices/springLgcopeindex_",Sys.Date(),".rds"))
+
+SOEinputsCOG(
+  infile = "zooplankton/outputs/spring_lgcope_model/spring_cog.rds",
+  season = "Spring",
+  taxa = "Lgcope",
+  outfile = paste0("zooplankton/outputs/Indices/springLgcopecog", Sys.Date(), ".rds"))
+
+## calanus finmarchicus
+SOEinputs(
+  infile = "zooplankton/outputs/spring_calfin_model/Index.csv",
+  season = "Spring",
+  taxa = "Calfin",
+  stratlook = stratlook_EPUonly,
+  outfile = paste0("zooplankton/outputs/Indices/springCalfinindex_",Sys.Date(),".rds"))
+
+SOEinputsCOG(
+  infile = "zooplankton/outputs/spring_calfin_model/spring_cog.rds",
+  season = "Spring",
+  taxa = "Calfin",
+  outfile = paste0("zooplankton/outputs/Indices/springCalfincog", Sys.Date(), ".rds"))

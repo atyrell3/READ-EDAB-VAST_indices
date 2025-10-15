@@ -10,7 +10,7 @@ library(VAST)
 
 # this dataset created in SSTmethods.Rmd
 
-macrobenagg_stn <- readRDS(here::here("fhdata/macrobenagg_stn_all_modBT.rds"))
+macrobenagg_stn <- readRDS(here::here("benthos/fhdata/macrobenagg_stn_all_modBT.rds"))
 
 # make SST column that uses surftemp unless missing or 0
 # there are 3 surftemp 0 values in the dataset, all with oisst > 15

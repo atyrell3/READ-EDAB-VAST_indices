@@ -176,7 +176,8 @@ settings = make_settings( n_x = 500,
                           fine_scale = TRUE,
                           FieldConfig = FieldConfig,
                           RhoConfig = RhoConfig,
-                          OverdispersionConfig = OverdispersionConfig
+                          OverdispersionConfig = OverdispersionConfig,
+                          mesh_package = "fmesher" 
                           )
 
 
@@ -189,7 +190,7 @@ settings = make_settings( n_x = 500,
 
 season <- c("fall_500_cov")
 
-working_dir <- here::here(sprintf("pyindex/macrobenthos_%s/", season))
+working_dir <- here::here(sprintf("benthos/pyindex/macrobenthos_%s/", season))
 
 if(!dir.exists(working_dir)) {
   dir.create(working_dir)

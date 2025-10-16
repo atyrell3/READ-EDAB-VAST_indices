@@ -1,0 +1,566 @@
+---
+title: "Bottom Temperature Filling"
+author: "Sarah Gaichas"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    code_fold: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      message = FALSE,
+                      warning = FALSE)
+library(tidyverse)
+library(tidync)
+library(sf)
+library(nngeo)
+
+```
+
+## Introduction
+
+Similar to the forage index analysis, we will want to explore catchability covariates for the benthos indices.
+
+For benthos, (benthivore predators and benthic prey) bottom temperature is likely a better covariate than surface temperature. 
+
+So we need an alternative source of bottom temperature data for those survey stations that do not have an associated bottom temperature measurement. For the forage index, we kept in situ temperature measurements where they existed and filled with OISST temperatures for the date and nearest spatial location when in situ temperature was missing. We will follow the same logic here.
+
+## Methods
+
+The bottom temperature reanalysis data we have are from Hubert DuPontavice, as used in the Black Sea Bass assessment, the SOE, and other products. I will use similar extraction methods to those posted by Abby Tyrell for the BSB to ensure this is the same source data, even though I am matching a location rather than calculating aggregate metrics.
+
+Abby Tyrell's and Scott Large's code is here: https://github.com/ScottLarge-NOAA/bsb/blob/main/docs/bsb_2024_update2.Rmd
+
+Let's try extracting from ERDDAP, otherwise we can grab the local files from Scott's repo.
+
+This is Abby and Scott's code; I don't have this original file but this code inspired code that works on my files:
+
+```{r, eval=FALSE}
+# url <- "http://nefsctest.nmfs.local:8080/erddap/griddap/duPontavice_bottom_temp_local.csv?sea_water_temperature_at_sea_floor%5B(1989-01-01T00:00:00Z):1:(2019-04-01T00:00:00Z)%5D%5B(35.9166666666667):1:(44.4166666666667)%5D%5B(-75.9166666666667):1:(-65.75)%5D"
+
+# data <- read.csv(url) # this should work but seems like NEFSC is choking the download
+data <- read.csv(here::here("data-raw/duPontavice_bottom_temp_local_4d04_943c_b2ef.csv"))
+
+# data2 <- data[[2]][-1,] %>%
+data2 <- data[-1,] %>%
+  tidyr::drop_na() %>%
+  dplyr::mutate(dplyr::across(2:4, as.numeric),
+                dplyr::across(1, lubridate::as_date),
+                year = lubridate::year(time),
+                month = lubridate::month(time)) %>%
+  dplyr::filter(month %in% 2:3) %>%
+  dplyr::rename(value = sea_water_temperature_at_sea_floor)
+```
+
+But I don't have the local files so try this from https://github.com/ScottLarge-NOAA/bsb/blob/main/scripts/bsb_bottom_temp-reanalysis.R 
+
+Test with the file I currently have; doesnt seem to have the same format so nope. Code here not working but inspired code that does.
+
+```{r, eval=FALSE}
+data_bt <- tidync("data-raw/bottomtemp/bottom_temp_combined_product_1959_2020.nc") %>% # original file from Hubert, NE shelf
+  hyper_tibble(force = TRUE) %>%
+  mutate(origin = as.Date(paste0(year, "-01-01"), tz = "UTC") - days(1),
+         date = as.Date(day, origin = origin, tz = "UTC"),
+         month = month(date)#,
+         #day = day(date)
+         ) 
+
+
+  #group_by(longitude, latitude, year, month) %>% # calculate monthly mean
+  #summarise(bt_temp = mean(sea_water_temperature_at_sea_floor, na.rm = TRUE))
+
+```
+
+Try viewing the individual year files from Hubert, see if code from the OISST download/conversion can work.
+
+The original files are on google drive [here](https://drive.google.com/drive/folders/1H4eMpdfo3EKnmu0EJFwZyHKt237Y3heW).
+Navigate to EDABranch_Drive/ITD/ERDDAP/Data/Bottom Temp from Hubert Revised by Joe v1
+
+The files are already split by year and clipped to the NE. File name format is `bottom_temp_yyyy.nc`
+
+This code tests reading one in, formatting date fields, and plotting.
+
+```{r}
+
+ncfile <- here::here("data-raw/bottomtemp/bt_revised_metadata_032024/bottom_temp_2020.nc")
+
+### get time info and add to tibble ----
+tunit <- ncmeta::nc_atts(ncfile, "time") %>%
+  dplyr::filter(name == "units") %>%
+  tidyr::unnest(cols = c(value))
+
+# tunit for this file is days since 1950-1-1
+origin <- as.Date("1950-01-01") 
+
+bttest <- tidync::tidync(ncfile) |>
+  tidync::hyper_tibble(force = TRUE) |>
+  dplyr::mutate(date = as.Date(time-1, origin=origin),
+                year = lubridate::year(date),
+                month = lubridate::month(date),
+                day = lubridate::day(date))
+  
+
+# plotting function modified from bluefish SST analysis
+dailybtplot <- function(oneday){
+  ggplot() +
+    geom_tile(data = oneday, aes(x = longitude, y = latitude, fill = sea_water_temperature_at_sea_floor)) +
+    geom_sf(data = ecodata::coast) +
+    #geom_point(data = FishStatsUtils::northwest_atlantic_grid, aes(x = Lon, y = Lat), size=0.05, alpha=0.1) +
+    scale_fill_gradientn(name = "Temp C",
+                         limits = c(0.5, 31),
+                         colours = c(scales::muted("blue"), "white",
+                                     scales::muted("red"), "black")) +
+    coord_sf(xlim = c(-77, -65), ylim = c(35, 45)) + 
+    ecodata::theme_map() +
+    ggtitle(paste("Bottom temp, mm-dd-yyyy:", unique(oneday$month),
+                   unique(oneday$day), unique(oneday$year), sep = " "))
+}
+
+mar122020 <- bttest[bttest$month==3 & bttest$day==12,]
+aug122020 <- bttest[bttest$month==8 & bttest$day==12,]
+
+dailybtplot(mar122020)
+dailybtplot(aug122020)
+
+
+```
+Save the tibbles as rds and then can read and spatially match using same function as for forage index?
+
+First a function to make the tibble from the nc and reformat date
+
+```{r, eval=FALSE}
+nctotibble <- function(ncfile = ncfile){
+  # tunit for this file is days since 1950-1-1
+  origin <- as.Date("1950-01-01") 
+  
+  bttib <- tidync::tidync(ncfile) |>
+    tidync::hyper_tibble(force = TRUE) |>
+    dplyr::mutate(date = as.Date(time-1, origin=origin),
+                  year = lubridate::year(date),
+                  month = lubridate::month(date),
+                  day = lubridate::day(date)) |>
+    dplyr::rename(mod_bt = sea_water_temperature_at_sea_floor)
+  
+  return(bttib)
+}
+
+```
+
+And a loop to save as rds, only do years in the `bt_revised_metadata_032024` folder. And we don't have survey data before 1968 so start there (likely to only use 1980 on).
+
+```{r, eval=FALSE}
+years <- 1968:2020
+for(i in years) {
+  name <- here::here("data-raw/bottomtemp/bt_revised_metadata_032024", paste0("bottom_temp_",i, ".nc"))
+  filename <- here::here("data-raw","bottomtemp", "bt_data", paste0("bt", i, ".rds"))
+  text <- knitr::knit_expand(text = "bt{{year}} <- nctotibble(ncfile = name)
+                                     saveRDS(bt{{year}}, filename)",
+                             year = i)
+  print(text)
+  try(eval(parse(text = text)))
+}
+```
+
+Test reading GLORYS files: they have a different time unit. of course
+
+```{r, eval=FALSE}
+ncfile <- here::here("data-raw/bottomtemp/GLORYS-20240515/glorys_01_30_2020_to_06_30_2021.nc")
+
+### get time info and add to tibble ----
+tunit <- ncmeta::nc_atts(ncfile, "time") %>%
+  dplyr::filter(name == "units") %>%
+  tidyr::unnest(cols = c(value))
+
+# time is seconds since 1970-01-01 00:00:00
+origin <- as.Date("1970-01-01")
+
+# 86400 seconds in a day, according to google
+
+bttest <- tidync::tidync(ncfile) |>
+  tidync::hyper_tibble(force = TRUE) |>
+  dplyr::mutate(date = as.Date((time/86400), origin=origin),
+                year = lubridate::year(date),
+                month = lubridate::month(date),
+                day = lubridate::day(date))
+
+
+
+```
+
+Function to read in the GLORYS years 2021-2023. Split to full years and write them to the same format as 2020 and back. This version has whole file in return, not split to years. 
+
+```{r, eval=FALSE}
+glorysnctotibble <- function(ncfile = ncfile){
+  # time is seconds since 1970-01-01 00:00:00
+  origin <- as.Date("1970-01-01") 
+  
+  bttib <- tidync::tidync(ncfile) |>
+    tidync::hyper_tibble(force = TRUE) |>
+    dplyr::mutate(date = as.Date((time/86400), origin=origin),
+                  year = lubridate::year(date),
+                  month = lubridate::month(date),
+                  day = lubridate::day(date))|>
+    dplyr::rename(mod_bt = bottomT)
+  
+  return(bttib)
+}
+```
+
+Maybe its easier to read in both files, then split output to years? This could get way too big in the future but works for now.
+
+```{r, eval=FALSE}
+glfiles <- list.files(path = here::here("data-raw/bottomtemp/GLORYS-20240515"), 
+                    pattern = "^glo",
+                    full.names = TRUE)
+
+allgltib <- purrr::map(glfiles, glorysnctotibble) |>
+  purrr::list_rbind() 
+
+# thanks for your opinions tidyverse, I want list elements named
+yrs <- unique(allgltib$year)
+
+allgltibls <- allgltib |>
+  dplyr::group_by(year) |>
+  dplyr::group_split() 
+  
+#name the list elements by year
+names(allgltibls) <- yrs
+
+#save each year in list to rds  
+purrr::imap(allgltibls, ~saveRDS(.x, file = here::here("data-raw","bottomtemp", "bt_data", paste0("bt", .y, ".rds"))))
+
+```
+
+GLORYS files are much bigger, maybe these aren't clipped to the area?
+
+Plot one; 2021. Correct, includes all the offshore BT we don't use.
+
+```{r}
+
+bt2021 <- readRDS(here::here("data-raw/bottomtemp/bt_data/bt2021.rds"))
+
+oneday <- bt2021[bt2021$month==7 & bt2021$day==4,] 
+
+jan15 <- bt2021[bt2021$month==1 & bt2021$day==15,] 
+
+mar15 <- bt2021[bt2021$month==3 & bt2021$day==15,]
+
+may15 <- bt2021[bt2021$month==5 & bt2021$day==15,]
+
+jul15 <- bt2021[bt2021$month==7 & bt2021$day==15,]
+
+sep15 <- bt2021[bt2021$month==9 & bt2021$day==15,]
+
+nov15 <- bt2021[bt2021$month==11 & bt2021$day==15,]
+
+# plotting function modified from bluefish SST analysis--with changed variable name!
+dailybtplot <- function(oneday){
+  ggplot() +
+    geom_tile(data = oneday, aes(x = longitude, y = latitude, fill = mod_bt)) +
+    geom_sf(data = ecodata::coast) +
+    #geom_point(data = FishStatsUtils::northwest_atlantic_grid, aes(x = Lon, y = Lat), size=0.05, alpha=0.1) +
+    scale_fill_gradientn(name = "Temp C",
+                         limits = c(0.5, 31),
+                         colours = c(scales::muted("blue"), "white",
+                                     scales::muted("red"), "black")) +
+    coord_sf(xlim = c(-77, -65), ylim = c(35, 45)) + 
+    ecodata::theme_map() +
+    ggtitle(paste("Bottom temp, mm-dd-yyyy:", unique(oneday$month),
+                   unique(oneday$day), unique(oneday$year), sep = " "))
+}
+
+
+#dailybtplot(oneday)
+dailybtplot(jan15)
+dailybtplot(mar15)
+dailybtplot(may15)
+dailybtplot(jul15)
+dailybtplot(sep15)
+dailybtplot(nov15)
+
+```
+
+
+Anyway all files now saved in the `data-raw/bottomtemp/bt_data` folder.
+
+Lets try the merge with the survey data, year by year as for the forage index. Have to do this for each dataset, kind of a pain, maybe separating them was dumb.
+
+Megabenthos test. Need to get month and day back into the datasets for this merge. Both NEFSC and NEAMAP.
+
+Lets do this from the beginning in the `VASTbenthos_ProcessInputDat.R script`. New agg files produced for input here. 
+
+```{r,eval=FALSE}
+
+megabenagg_stn_all <- readRDS(here("fhdata/megabenagg_stn_all.rds"))
+
+stations <- megabenagg_stn_all %>%
+  #dplyr::mutate(day = str_pad(day, 2, pad='0'),
+  #              month = str_pad(month, 2, pad='0'),
+  #              yrmody = as.numeric(paste0(year, month, day))) %>%
+  # consider this instead, may not need to pad strings? already date fields in the bt data
+  dplyr::mutate(date = as.Date(paste0(year,"-", month,"-", day)), numdate = as.numeric(date)) |>
+  dplyr::select(id, declon, declat, year, numdate) %>%
+  na.omit() %>%
+  sf::st_as_sf(coords=c("declon","declat"), crs=4326, remove=FALSE)
+
+
+
+#list of SST dataframes
+BTdfs <- list.files(here("data-raw/bottomtemp/bt_data/"), pattern = "*.rds")
+
+dietstn_mod_bt <- tibble()
+
+
+for(df in BTdfs){
+  btdf <- readRDS(paste0(here("data-raw/bottomtemp/bt_data/", df)))
+  
+  if(unique(btdf$year) %in% unique(stations$year)){
+    # keep only bluefish dates in SST year
+    stationsyr <- stations %>%
+      filter(year == unique(btdf$year))
+    
+    # keep only modeled bt days in survey dataset
+    btdf_survdays <- btdf %>%
+      dplyr::mutate(numdate = as.numeric(date))%>%
+      dplyr::filter(numdate %in% unique(stationsyr$numdate)) %>%
+      dplyr::mutate(year = as.numeric(year),
+                    month = as.numeric(month),
+                    day = as.numeric(day),
+                    declon = longitude,
+                    declat = latitude) %>%
+      dplyr::select(-longitude, -latitude) %>%
+      sf::st_as_sf(coords=c("declon","declat"), crs=4326, remove=FALSE)
+    
+    # now join by nearest neighbor and date
+    
+    #https://stackoverflow.com/questions/71959927/spatial-join-two-data-frames-by-nearest-feature-and-date-in-r
+    
+    yrdietmodBT <- do.call('rbind', lapply(split(stationsyr, 1:nrow(stationsyr)), function(x) {
+      sf::st_join(x, btdf_survdays[btdf_survdays$numdate == unique(x$ numdate),],
+                  #join = st_nearest_feature
+                  join = st_nn, k = 1, progress = FALSE
+      )
+    }))
+    
+    #   #datatable solution--works but doesnt seem faster?
+    #    df1 <- data.table(stationsyr)
+    #
+    #  .nearest_samedate <- function(x) {
+    #    st_join(st_as_sf(x), sstdf_survdays[sstdf_survdays$yrmody == unique(x$yrmody),], join = st_nearest_feature)
+    #  }
+    # #
+    #  yrdietOISST <- df1[, .nearest_samedate(.SD), by = list(1:nrow(df1))]
+    
+    dietstn_mod_bt <- rbind(dietstn_mod_bt,  yrdietmodBT)
+  }
+}
+
+#saveRDS(dietstn_OISST, here("data-raw/dietstn_OISST.rds"))
+
+# Now join with OISST dataset
+
+#bluepyagg_stn_all <- readRDS(here("fhdat/bluepyagg_stn_all.rds"))
+#dietstn_OISST <- readRDS(here("data-raw/dietstn_OISST.rds"))
+
+
+dietstn_mod_bt_merge <- dietstn_mod_bt %>%
+  dplyr::rename(declon = declon.x,
+                declat = declat.x,
+                year = year.x) %>%
+  dplyr::select(id, mod_bt) %>%
+  sf::st_drop_geometry()
+
+megabenagg_stn_all_modBT <- left_join(megabenagg_stn_all, dietstn_mod_bt_merge)
+
+saveRDS(megabenagg_stn_all_modBT, here::here("fhdata/megabenagg_stn_all_modBT.rds"))
+
+```
+
+Same deal for macrobenthos:
+
+```{r,eval=FALSE}
+
+macrobenagg_stn_all <- readRDS(here("fhdata/macrobenagg_stn_all.rds"))
+
+stations <- macrobenagg_stn_all %>%
+  #dplyr::mutate(day = str_pad(day, 2, pad='0'),
+  #              month = str_pad(month, 2, pad='0'),
+  #              yrmody = as.numeric(paste0(year, month, day))) %>%
+  # consider this instead, may not need to pad strings? already date fields in the bt data
+  dplyr::mutate(date = as.Date(paste0(year,"-", month,"-", day)), numdate = as.numeric(date)) |>
+  dplyr::select(id, declon, declat, year, numdate) %>%
+  na.omit() %>%
+  sf::st_as_sf(coords=c("declon","declat"), crs=4326, remove=FALSE)
+
+
+
+#list of SST dataframes
+BTdfs <- list.files(here("data-raw/bottomtemp/bt_data/"), pattern = "*.rds")
+
+dietstn_mod_bt <- tibble()
+
+
+for(df in BTdfs){
+  btdf <- readRDS(paste0(here("data-raw/bottomtemp/bt_data/", df)))
+  
+  if(unique(btdf$year) %in% unique(stations$year)){
+    # keep only bluefish dates in SST year
+    stationsyr <- stations %>%
+      filter(year == unique(btdf$year))
+    
+    # keep only modeled bt days in survey dataset
+    btdf_survdays <- btdf %>%
+      dplyr::mutate(numdate = as.numeric(date))%>%
+      dplyr::filter(numdate %in% unique(stationsyr$numdate)) %>%
+      dplyr::mutate(year = as.numeric(year),
+                    month = as.numeric(month),
+                    day = as.numeric(day),
+                    declon = longitude,
+                    declat = latitude) %>%
+      dplyr::select(-longitude, -latitude) %>%
+      sf::st_as_sf(coords=c("declon","declat"), crs=4326, remove=FALSE)
+    
+    # now join by nearest neighbor and date
+    
+    #https://stackoverflow.com/questions/71959927/spatial-join-two-data-frames-by-nearest-feature-and-date-in-r
+    
+    yrdietmodBT <- do.call('rbind', lapply(split(stationsyr, 1:nrow(stationsyr)), function(x) {
+      sf::st_join(x, btdf_survdays[btdf_survdays$numdate == unique(x$ numdate),],
+                  #join = st_nearest_feature
+                  join = st_nn, k = 1, progress = FALSE
+      )
+    }))
+    
+    #   #datatable solution--works but doesnt seem faster?
+    #    df1 <- data.table(stationsyr)
+    #
+    #  .nearest_samedate <- function(x) {
+    #    st_join(st_as_sf(x), sstdf_survdays[sstdf_survdays$yrmody == unique(x$yrmody),], join = st_nearest_feature)
+    #  }
+    # #
+    #  yrdietOISST <- df1[, .nearest_samedate(.SD), by = list(1:nrow(df1))]
+    
+    dietstn_mod_bt <- rbind(dietstn_mod_bt,  yrdietmodBT)
+  }
+}
+
+#saveRDS(dietstn_OISST, here("data-raw/dietstn_OISST.rds"))
+
+# Now join with OISST dataset
+
+#bluepyagg_stn_all <- readRDS(here("fhdat/bluepyagg_stn_all.rds"))
+#dietstn_OISST <- readRDS(here("data-raw/dietstn_OISST.rds"))
+
+
+dietstn_mod_bt_merge <- dietstn_mod_bt %>%
+  dplyr::rename(declon = declon.x,
+                declat = declat.x,
+                year = year.x) %>%
+  dplyr::select(id, mod_bt) %>%
+  sf::st_drop_geometry()
+
+macrobenagg_stn_all_modBT <- left_join(macrobenagg_stn_all, dietstn_mod_bt_merge)
+
+saveRDS(macrobenagg_stn_all_modBT, here::here("fhdata/macrobenagg_stn_all_modBT.rds"))
+
+```
+
+How do the in situ bottom temp and modeled bottom temp compare where we have both?
+
+Macrobenthos dataset:
+
+```{r}
+macrobenagg_stn_all_modBT <- readRDS(here::here("fhdata/macrobenagg_stn_all_modBT.rds"))
+
+comparebt <- macrobenagg_stn_all_modBT %>%
+  #dplyr::filter(year>1984)%>%
+  dplyr::select(bottemp, mod_bt) %>%
+  na.omit()
+
+ggplot2::ggplot(comparebt, aes(x=bottemp, y=mod_bt)) +
+  geom_point(color="blue", alpha=0.1)+
+  geom_abline(intercept = 0, slope = 1) +
+  theme_bw() 
+```
+
+Megabenthos dataset: 
+
+```{r}
+
+megabenagg_stn_all_modBT <- readRDS(here::here("fhdata/megabenagg_stn_all_modBT.rds"))
+
+comparebt <- megabenagg_stn_all_modBT %>%
+  #dplyr::filter(year>1984)%>%
+  dplyr::select(bottemp, mod_bt) %>%
+  na.omit()
+
+ggplot2::ggplot(comparebt, aes(x=bottemp, y=mod_bt)) +
+  geom_point(color="blue", alpha=0.1)+
+  geom_abline(intercept = 0, slope = 1) +
+  theme_bw() 
+```
+Macrobenthos by year:
+
+```{r}
+mapbt <- macrobenagg_stn_all_modBT %>%
+  #dplyr::filter(year>1984) %>%
+  dplyr::mutate(btdiff = bottemp-mod_bt) %>%
+  dplyr::select(id, year, season_ng, declon, declat, bottemp, mod_bt, btdiff) 
+
+yrmap <- function(mapyr){
+  ggplot2::ggplot(mapbt |> dplyr::filter(year==mapyr)) +
+  geom_sf(data = ecodata::coast) +
+  coord_sf(xlim = c(-77, -65), ylim = c(35, 45)) + 
+  geom_point(aes(x=declon, y=declat, colour=btdiff)) +
+  scale_color_gradient2(low = "blue",
+                        mid = "green",
+                        high = "purple",
+                        midpoint = 0,
+                        na.value = "yellow") +
+  theme_bw() +
+  facet_wrap(~season_ng) +
+  ggtitle(paste("Bottom temp difference survey-Hubert/GLORYS:", mapyr, sep = " "))
+}
+```
+
+### Bottom temp mismatch by year, macrobenthos data {.tabset}
+
+Map stations by bottom temp match/mismatch for each year. Yellow is missing data that would be filled by modeled bt, and the color range shows how different bottom temp is for stations with both values.
+
+```{r,  results='asis'}
+for(mapyr in 1973:2022){
+  
+    cat("  \n####",  as.character(mapyr),"  \n")
+    print(yrmap(mapyr)) 
+    cat("  \n")   
+    
+  }
+```
+
+### {-}
+
+Megabenthos by year (likely the same as above but visualizing just in case):
+
+```{r}
+mapbt <- megabenagg_stn_all_modBT %>%
+  #dplyr::filter(year>1984) %>%
+  dplyr::mutate(btdiff = bottemp-mod_bt) %>%
+  dplyr::select(id, year, season_ng, declon, declat, bottemp, mod_bt, btdiff) 
+```
+
+### Bottom temp mismatch by year, megabenthos data {.tabset}
+
+Map stations by bottom temp match/mismatch for each year. Yellow is missing data that would be filled by modeled bt, and the color range shows how different bottom temp is for stations with both values.
+
+```{r,  results='asis'}
+for(mapyr in 1973:2022){
+  
+    cat("  \n####",  as.character(mapyr),"  \n")
+    print(yrmap(mapyr)) 
+    cat("  \n")   
+    
+  }
+```
+
+### {-}

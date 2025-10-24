@@ -564,3 +564,58 @@ for(mapyr in 1973:2022){
 ```
 
 ### {-}
+
+### Adding 2024 Bottom temperatuer data
+
+MTG 10/24/2025
+Adding 2024 bottom temperature data in order to run VAST scripts with updated data
+Pulled GLORYS bottom temp for 2024 following directions in GLORY Download Guide on google drive
+```{r}
+glorysnctotibble <- function(ncfile){
+  # Time is in hours since 1950-01-01
+  origin <- as.POSIXct("1950-01-01 00:00:00", tz = "UTC")
+  
+  bttib <- tidync::tidync(ncfile) |>
+    tidync::hyper_tibble(force = TRUE) |>
+    dplyr::mutate(
+      time = as.numeric(origin + lubridate::hours(time)) - as.numeric(as.POSIXct("1970-01-01 00:00:00", tz="UTC")),
+      date = as.Date(as.POSIXct(origin + lubridate::hours(time), origin="1970-01-01", tz="UTC")),
+      year = lubridate::year(date),
+      month = lubridate::month(date),
+      day = lubridate::day(date)
+    ) |>
+    dplyr::rename(mod_bt = bottomT)
+  
+  return(bttib)
+}
+
+
+nc_files <- list.files(
+  here::here("benthos/data-raw/bottomtemp/Daily_Bottom_Temp2024"),
+  pattern = "\\.nc$",
+  full.names = TRUE
+)
+
+bt2024_all <- purrr::map_dfr(nc_files, glorysnctotibble)
+
+#change lat long to num instead of character
+bt2024_all <- bt2024_all |> 
+  mutate(
+    longitude = as.numeric(longitude),
+    latitude = as.numeric(latitude)
+  )
+
+bt2024 <- bt2024_all %>%
+  filter(
+    longitude >= -78, longitude <= -62,
+    latitude >= 34, latitude <= 46,
+    !is.na(mod_bt)
+  )
+
+
+saveRDS(bt2024, here::here("benthos/data-raw/bottomtemp/bt_data/bt2024.rds"))
+
+
+
+```
+

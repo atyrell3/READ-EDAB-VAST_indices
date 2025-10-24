@@ -11,7 +11,10 @@ library(dendextend)
 # Load NEFSC stomach data received from Brian Smith
 
 # object is called `allfh`
-load(url("https://github.com/NOAA-EDAB/forageindex/raw/main/fhdat/allfh.rmd.epu.RData"))
+
+load(here("2025_shared_data/allfh.rmd.epu.RData"))
+
+# load(url("https://github.com/NOAA-EDAB/forageindex/raw/main/fhdat/allfh.rmd.epu.RData"))
 
 # # object is called `allfh`
 # load(url("https://github.com/NOAA-EDAB/forageindex/raw/main/fhdat/allfh.Rdata"))
@@ -273,7 +276,7 @@ nefsc_macrobenagg_stn <- macrobenagg_stn %>%
 # Add NEAMAP macrobenthos to make full aggregated stomach dataset
 
 # Read in NEAMAP updated input from Jim Gartland, reformat with same names
-neamap_macrobenthos_stn <- read_csv(here("benthos/fhdata/NEAMAP_Mean Stomach Weights_Macrobenthos prey_wWQ.csv")) %>%  
+neamap_macrobenthos_stn <- read_csv(here("2025_shared_data/NEAMAP_Mean Stomach Weights_Macrobenthos prey_wWQ_sept2025.csv")) %>%  
   mutate(vessel = "NEAMAP") %>%
   rename(id = station,
          summacrobenpywt = summacpreywt,
@@ -292,11 +295,14 @@ neamap_macrobenthos_stn <- read_csv(here("benthos/fhdata/NEAMAP_Mean Stomach Wei
          setdepth = depthm) 
 
 # Add NEAMAP month and day information
-NEAMAPstationSST <- read.csv("https://raw.githubusercontent.com/NOAA-EDAB/forageindex/main/fhdat/NEAMAP%20SST_2007_2022.csv")
 
-NEAMAPstationSST23 <- read.csv("https://github.com/NOAA-EDAB/forageindex/raw/refs/heads/main/fhdat/NEAMAP%20SST_2023.csv")
+NEAMAPstationSST <- read.csv(here("2025_shared_data/NEAMAP SST_2007_2024.csv"))
 
-NEAMAPstationSST <- dplyr::bind_rows(NEAMAPstationSST, NEAMAPstationSST23)
+# NEAMAPstationSST <- read.csv("https://raw.githubusercontent.com/NOAA-EDAB/forageindex/main/fhdat/NEAMAP%20SST_2007_2022.csv")
+# 
+# NEAMAPstationSST23 <- read.csv("https://github.com/NOAA-EDAB/forageindex/raw/refs/heads/main/fhdat/NEAMAP%20SST_2023.csv")
+# 
+# NEAMAPstationSST <- dplyr::bind_rows(NEAMAPstationSST, NEAMAPstationSST23)
 
 
 NEAMAPstations <- NEAMAPstationSST %>%
@@ -396,7 +402,7 @@ nefsc_megabenagg_stn <- megabenagg_stn %>%
 # Add NEAMAP megabenthos to make full aggregated stomach dataset
 
 # Read in NEAMAP updated input from Jim Gartland, reformat with same names
-neamap_megabenthos_stn <- read_csv(here("benthos/fhdata/NEAMAP_Mean Stomach Weights_Megabenthos prey_wWQ.csv")) %>%  
+neamap_megabenthos_stn <- read_csv(here("2025_shared_data/NEAMAP_Mean Stomach Weights_Megabenthos prey_wWQ_sep2025.csv")) %>%  
   mutate(vessel = "NEAMAP") %>%
   rename(id = station,
          summegabenpywt = summgbpreywt,

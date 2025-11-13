@@ -10,7 +10,7 @@ library(VAST)
 
 # this dataset created in SSTmethods.Rmd
 
-megabenagg_stn <- readRDS(here::here("fhdata/megabenagg_stn_all_modBT.rds"))
+megabenagg_stn <- readRDS(here::here("benthos/fhdata/megabenagg_stn_all_modBT.rds"))
 
 # make SST column that uses surftemp unless missing or 0
 # there are 3 surftemp 0 values in the dataset, all with oisst > 15
@@ -175,7 +175,8 @@ settings = make_settings( n_x = 500,
                           fine_scale = TRUE,
                           FieldConfig = FieldConfig,
                           RhoConfig = RhoConfig,
-                          OverdispersionConfig = OverdispersionConfig
+                          OverdispersionConfig = OverdispersionConfig,
+                          mesh_package = "fmesher" 
                           )
 
 
@@ -188,7 +189,7 @@ settings = make_settings( n_x = 500,
 
 season <- c("fall_500_cov")
 
-working_dir <- here::here(sprintf("pyindex/megabenthos_%s/", season))
+working_dir <- here::here(sprintf("benthos/pyindex/megabenthos_%s/", season))
 
 if(!dir.exists(working_dir)) {
   dir.create(working_dir)
@@ -220,7 +221,7 @@ plot( fit,
 
 season <- c("spring_500_cov")
 
-working_dir <- here::here(sprintf("pyindex/megabenthos_%s/", season))
+working_dir <- here::here(sprintf("benthos/pyindex/megabenthos_%s/", season))
 
 if(!dir.exists(working_dir)) {
   dir.create(working_dir)

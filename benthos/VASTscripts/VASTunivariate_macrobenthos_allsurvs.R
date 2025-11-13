@@ -222,7 +222,7 @@ plot( fit,
 
 season <- c("spring_500_cov")
 
-working_dir <- here::here(sprintf("pyindex/macrobenthos_%s/", season))
+working_dir <- here::here(sprintf("benthos/pyindex/macrobenthos_%s/", season))
 
 if(!dir.exists(working_dir)) {
   dir.create(working_dir)
@@ -230,9 +230,9 @@ if(!dir.exists(working_dir)) {
   
 fit <- fit_model( settings = settings,  
                  #extrapolation_list = New_Extrapolation_List,
-                 Lat_i = macrobenagg_stn_spring[,'Lat'], 
-                 Lon_i = macrobenagg_stn_spring[,'Lon'], 
-                 t_i = macrobenagg_stn_spring[,'Year'], 
+                 Lat_i = macrobenagg_stn_spring$Lat, 
+                 Lon_i = macrobenagg_stn_spring$Lon, 
+                 t_i = macrobenagg_stn_spring$Year, 
                  b_i = as_units(macrobenagg_stn_spring[,'Catch_g'], 'g'), 
                  a_i = rep(1, nrow(macrobenagg_stn_spring)),
                  v_i = macrobenagg_stn_spring$Vessel,

@@ -1,8 +1,8 @@
 # Script Header -----------------------------------------------------------
 
 # Title: Run VAST models to create Zooplankton Index Indicators
-# Author: Adelle Molina
-# Date: September 2025
+# Author: AST
+# Date: November 2025
 # Description: This script runs many VAST models
 # For the 2025 SOE, no day of year covariates or temperature have been included
 # The primary output are various seasonal zooplankton index indicators for the State of the Ecosystem report.
@@ -349,93 +349,10 @@ for (cfg_name in names(configs)) {
   assign(paste0("euph_stn_", cfg_name), df)
 }
 
-
-## Euphausiid model runs (simultaneous, slower, do not run)######################
-# Run bias corrected models for annual, spring, and fall simultaneously
-
-# list of data, settings, and directory for output for each option
-
-mod.season <- c("euph_fall_500", "euph_spring_500", "euph_ann_500") #includes n knots
-
-mod.dat <- list(euph_stn_fall, euph_stn_spring, euph_stn_ann)
-
-names(mod.dat) <- mod.season
-
-mod.obsmod <- list(ObsModel1, ObsModel1, ObsModel1)
-
-names(mod.obsmod) <- mod.season
-
-# Define covariate combinations
-
-mod.covar <- c("biascorrect", "biascorrect_doy")
-
-for (season in mod.season) {
-  season <- season
-
-  dat <- mod.dat[[season]]
-
-  Q_ikbase <- NULL
-  Q_ikdoy <- as.matrix(dat[, c("Dayofyear")])
-
-  mod.Qik <- list(Q_ikbase, Q_ikdoy)
-
-  names(mod.Qik) <- mod.covar
-
-  for (covar in mod.covar) {
-    name <- paste0(season, "_", covar)
-
-    working_dir <- here::here(sprintf("pyindex/%s/", name))
-
-    if (!dir.exists(working_dir)) {
-      dir.create(working_dir)
-    }
-
-    ObsModel <- mod.obsmod[[season]]
-    Q_ik <- mod.Qik[[covar]]
-
-    settings <- make_settings(
-      n_x = 500,
-      Region = "northwest_atlantic",
-      Version = "VAST_v14_0_1", #needed to prevent error from newer dev version number
-      #strata.limits = list('All_areas' = 1:1e5), full area
-      strata.limits = strata.limits,
-      purpose = "index2",
-      ObsModel = ObsModel,
-      bias.correct = TRUE,
-      use_anisotropy = use_anisotropy,
-      FieldConfig = FieldConfig,
-      RhoConfig = RhoConfig, #always default
-      OverdispersionConfig = OverdispersionConfig
-    )
-
-    fit <- try(fit_model(
-      settings = settings,
-      #extrapolation_list = New_Extrapolation_List,
-      Lat_i = dat$Lat,
-      Lon_i = dat$Lon,
-      t_i = dat$Year,
-      b_i = as_units(dat[, 'Catch_g'], 'g'),
-      a_i = rep(1, nrow(dat)),
-      v_i = dat$Vessel,
-      Q_ik = Q_ik,
-      #Use_REML = TRUE,
-      #test_fit = FALSE,
-      working_dir = paste0(working_dir, "/")
-    ))
-
-    saveRDS(fit, file = paste0(working_dir, "/fit.rds"))
-
-    # Plot results
-    if (!class(fit) == "try-error") {
-      plot(fit, working_dir = paste0(working_dir, "/"))
-    }
-  } # end config loop
-} # end season loop
-
-
 ## Euphausiid model runs (separately by season, no annual) ---------------------------------------
 
-# Fall first, no DOY or temp covariate
+### Fall ----
+# no DOY or temp covariate
 working_dir <- here::here(sprintf("zooplankton/outputs/fall_euph_model"))
 
 if (!dir.exists(working_dir)) {
@@ -467,8 +384,7 @@ plot(fit, working_dir = paste0(working_dir, "/"))
 cog <- extract_cog(fit)
 saveRDS(cog, here::here(working_dir, paste0("fall_cog.rds")))
 
-###
-
+### spring ----
 # run spring models, also with no DOY or temp covariates
 working_dir <- here::here(sprintf("zooplankton/outputs/spring_euph_model"))
 
@@ -551,6 +467,7 @@ for (cfg_name in names(configs)) {
 
 ## Zooplankton Volume model runs (separately by season, no annual) ---------------------------------------
 
+### fall ----
 # Fall first, no DOY or temp covariate
 working_dir <- here::here(sprintf("zooplankton/outputs/fall_zoopvol_model"))
 
@@ -573,6 +490,15 @@ fit <- fit_model(
   working_dir = paste0(working_dir, "/")
 )
 
+# ## ERRORS WITH MESSAGE:
+# The following parameters appear to be approaching zero:
+#   Param starting_value Lower          MLE Upper final_gradient
+# 45 L_omega2_z              1  -Inf 6.259014e-06   Inf    0.001255733
+# Please turn off factor-model variance parameters `L_` that are approaching zero and re-run the model
+#
+#
+# Error: Please change model structure to avoid problems with parameter estimates and then re-try; see details in `?check_fit`
+
 saveRDS(fit, file = paste0(working_dir, "/fit.rds"))
 #fit <- readRDS(paste0(working_dir, "/fit.rds"))
 
@@ -584,8 +510,7 @@ plot(fit, working_dir = paste0(working_dir, "/"))
 cog <- extract_cog(fit)
 saveRDS(cog, here::here(working_dir, paste0("fall_cog.rds")))
 
-###
-
+### spring ----
 # run spring models, also with no DOY or temp covariates
 working_dir <- here::here(sprintf("zooplankton/outputs/spring_zoopvol_model"))
 
@@ -686,6 +611,7 @@ for (taxa_name in names(taxa_cols)) {
 ## Copepod model runs (separately by season, no annual) ---------------------------------------
 ## small Copepod models ----
 
+### fall ----
 # Fall first, no DOY or temp covariate
 working_dir <- here::here(sprintf("zooplankton/outputs/fall_smcope_model"))
 
@@ -720,6 +646,7 @@ saveRDS(cog, here::here(working_dir, paste0("fall_cog.rds")))
 
 ###
 
+### spring ----
 # run spring models, also with no DOY or temp covariates
 working_dir <- here::here(sprintf("zooplankton/outputs/spring_smcope_model"))
 
@@ -754,6 +681,7 @@ saveRDS(cog, here::here(working_dir, paste0("spring_cog.rds")))
 
 ## large Copepod models ----
 
+### fall ----
 # Fall first, no DOY or temp covariate
 working_dir <- here::here(sprintf("zooplankton/outputs/fall_lgcope_model"))
 
@@ -788,6 +716,7 @@ saveRDS(cog, here::here(working_dir, paste0("fall_cog.rds")))
 
 ###
 
+### spring ----
 # run spring models, also with no DOY or temp covariates
 working_dir <- here::here(sprintf("zooplankton/outputs/spring_lgcope_model"))
 
@@ -822,6 +751,7 @@ saveRDS(cog, here::here(working_dir, paste0("spring_cog.rds")))
 
 ## calfin models ----
 
+### fall ----
 # Fall first, no DOY or temp covariate
 working_dir <- here::here(sprintf("zooplankton/outputs/fall_calfin_model"))
 
@@ -854,8 +784,16 @@ plot(fit, working_dir = paste0(working_dir, "/"))
 cog <- extract_cog(fit)
 saveRDS(cog, here::here(working_dir, paste0("fall_cog.rds")))
 
+## ERROR
+# Error in TransformADFunObject(ADFun, method = "laplace", config = cfg,  :
+# Caught exception 'std::bad_alloc' in function 'TransformADFunObjectTemplate'
+
+## this appears to be a memory issue, can be solved by re-running the model
+## with few other applications running or on a different computer
+
 ###
 
+### spring ----
 # run spring models, also with no DOY or temp covariates
 working_dir <- here::here(sprintf("zooplankton/outputs/spring_calfin_model"))
 
@@ -904,18 +842,23 @@ stratlook_EPUonly <- data.frame(
 
 ## map SOE index code ----
 ## map COG code over all combinations
+## this list_dirs needs to be updated to include spring and zoopvol models (when results exist)
 list_dirs <- paste0(
   here::here("zooplankton/outputs"),
   "/",
-  rep(c("spring", "fall"), each = 5),
+  rep("fall", 4),
+  # rep(c("spring", "fall"), each = 5),
   "_",
   rep(
     c(
       # commented these out for testing
       # all models have not run yet
-      "euph" #, "zoopvol", "smcope", "lgcope", "calfin"
+      "euph", #"zoopvol",
+      "smcope",
+      "lgcope",
+      "calfin"
     ),
-    2
+    1
   ),
   "_model"
 )

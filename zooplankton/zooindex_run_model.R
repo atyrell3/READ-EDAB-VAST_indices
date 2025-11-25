@@ -45,7 +45,7 @@ source(here::here("zooplankton/functions.R"))
 
 #Read in main data created in zooindex_process_input_data.R
 copepod_dat <- readRDS(here::here(
-  "zooplankton/outputs/zooplankton_VAST_input.rds"
+  "zooplankton/outputs/zooplankton_VAST_input_2025.rds"
 ))
 
 ## General Settings  ---- ----##################################################
@@ -160,7 +160,7 @@ settings <- make_settings(
 )
 
 # second set of settings
-# used for zooplankton volume
+# used for zooplankton volume, small copepod spring
 settings2 <- make_settings(
   n_x = 500,
   Region = "northwest_atlantic",
@@ -332,7 +332,7 @@ run_vast_model(
   data = smcope_spring,
   out_dir = here::here(sprintf("zooplankton/outputs/spring_smcope_model")),
   season = "spring",
-  vast_settings = settings
+  vast_settings = settings2 # different settings because 100% encounters
 )
 
 ## large Copepod models ----

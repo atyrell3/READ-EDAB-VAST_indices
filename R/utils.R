@@ -530,44 +530,29 @@ SOEinputs <- function(infile, season, stratlook, outfile) {
   saveRDS(forageindex, outfile)
 }
 
-I
-can
-definitely
-help
-you
-with
-that.
-I
-'ll write the documentation for your extract_cog function using the Roxygen2 format, which is the standard for R packages.
+# I can definitely help you with that.
+# I'll write the documentation for your extract_cog function using the Roxygen2 format, 
+# which is the standard for R packages.
 
-Overview of the Documentation
-The documentation will be structured to be clear and helpful for anyone using the function. It will include:
+# Overview of the Documentation
+# The documentation will be structured to be clear and helpful for anyone using the function. It will include:
 
-Description: A brief summary of what the function does.
+# Description: A brief summary of what the function does.
 
-Arguments (@param): An explanation of the single input, model_fit.
+# Arguments (@param): An explanation of the single input, model_fit.
 
-Details (@details): A more in-depth look at the internal workings of the function, particularly its reliance on the FishStatsUtils package.
+# Details (@details): A more in-depth look at the internal workings of the function, particularly its reliance on the FishStatsUtils package.
 
-Value (@return): A description of what the function returns.
+# Value (@return): A description of what the function returns.
 
-Examples (@examples): A runnable example to show the function in action.
+# Examples (@examples): A runnable example to show the function in action.
 
-Documentation for extract_cog
-Here is the Roxygen2 documentation. You can copy this code and paste it directly above your function in the R script.
+# Documentation for extract_cog
+# Here is the Roxygen2 documentation. You can copy this code and paste it directly above your function in the R script.
 
-R
+# R
 
-#'
-Extract
-Center
-of
-Gravity
-from
-a
-VAST
-Model
-Fit
+#'Extract Center of Gravity from a VAST Model Fit
 #'
 #' This function calculates the center of gravity (COG) for a spatio-temporal
 #' model fit object from the VAST (Vector Autoregressive Spatio-Temporal)

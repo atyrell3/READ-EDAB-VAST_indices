@@ -1,0 +1,716 @@
+---
+title: "Benthos Indices: Results"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    code_fold: hide
+---
+
+Script below copied from https://github.com/NOAA-EDAB/benthosindex/blob/main/Results.Rmd
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      message = FALSE,
+                      warning = FALSE)
+
+library(tidyverse)
+theme_set(theme_bw())
+library(here)
+library(DT)
+```
+
+# Introduction
+
+Models for macrobenthos and megabenthos were run for spring and fall using all spatial and spatio-temporal random effects, and three catchability covariates: mean predator length at the location, number of predator species at the location, and bottom temperature at the location. 
+
+# Methods
+
+See [workflow document](https://noaa-edab.github.io/benthosindex/WorkflowDecisions.html) for details. 
+
+# Results
+
+## Counts of stations total and with prey
+
+In the table below, Total stations is all stations where benthivore predators were sampled. The fields from Total stomachs through Variance n preds reflect the number of predators sampled at all of these stations. The last four columns reflect the number and percent of stations with positive macrobenthos and megabenthos prey, respectively.
+
+Note that we did not use data from 1973-1979 in the models. As of October 2024, we are including data through 2023 from both NEFSC and NEAMAP.
+
+```{r}
+macrobenagg_stn <- readRDS(here::here("benthos/fhdata/macrobenagg_stn_all_modBT.rds"))
+megabenagg_stn <- readRDS(here::here("benthos/fhdata/megabenagg_stn_all_modBT.rds"))
+
+nstationsyr <- macrobenagg_stn |>
+  dplyr::group_by(year, season_ng) |>
+  dplyr::summarise(totstations = n(),
+                   totstomachs = sum(nstomtot),
+                   minnpred = min(nbenthivoresp),
+                   meannpred = mean(nbenthivoresp),
+                   maxnpred = max(nbenthivoresp),
+                   varnpred = var(nbenthivoresp))
+
+macropreystns <- macrobenagg_stn |>
+  dplyr::filter(meanmacrobenpywt > 0) |>
+  dplyr::group_by(year, season_ng) |>
+  dplyr::summarise(macrobenstations = n())
+
+megapreystns <- megabenagg_stn |>
+  dplyr::filter(meanmegabenpywt > 0) |>
+  dplyr::group_by(year, season_ng) |>
+  dplyr::summarise(megabenstations = n())
+
+stationsprey <- dplyr::left_join(nstationsyr, macropreystns) |>
+  dplyr::left_join(megapreystns) |>
+  dplyr::arrange(desc(season_ng), .by_group = TRUE) |>
+  dplyr::mutate(year = as.character(year),
+                percmacro = round(macrobenstations/totstations*100),
+                percmega = round(megabenstations/totstations*100)) |>
+  na.omit()
+
+flextable::flextable(stationsprey) |>
+  flextable::colformat_char(j = "year") |>
+  flextable::fontsize(size = 8, part = "all") |>
+  flextable::set_header_labels(
+    year = "Year", season_ng = "Season", totstations = "Total stations", 
+    totstomachs = "Total stomachs", minnpred = "Minimum n preds", meannpred = "Mean n preds", 
+    maxnpred = "Maximum n preds", varnpred = "Variance n preds",
+    macrobenstations =  "Macrobenthos stations",
+    megabenstations = "Megabenthos stations",
+    percmacro =  "Percent macrobenthos", percmega = "Percent megabenthos")
+
+```
+
+
+## Spatial distribution of stations 
+
+```{r}
+# from each output folder in pyindex, 
+outdir <- here::here("benthos/pyindex")
+moddirs <- list.dirs(outdir)
+moddirs <- moddirs[-1]
+
+# only latest
+moddirs23 <- moddirs[grep("1980-2024", moddirs, invert = TRUE)]
+```
+
+Spatial coverage for stomachs in fall, both groups (same set of predators, same stations)
+
+```{r}
+mapfall <- paste0(moddirs23[1], "/Data_by_year.png")
+
+knitr::include_graphics(mapfall) 
+```
+
+Spatial coverage for stomachs in spring, both groups (same set of predators, same stations)
+
+```{r}
+mapspring <- paste0(moddirs23[2], "/Data_by_year.png")
+
+knitr::include_graphics(mapspring) 
+```
+
+
+## Model selection
+
+See [workflow document](https://noaa-edab.github.io/benthosindex/WorkflowDecisions.html) for details.
+
+## Model results
+
+```{r}
+stratlook <- data.frame(Stratum = c("Stratum_1",
+                                    "Stratum_2",
+                                    "Stratum_3",
+                                    "Stratum_4",
+                                    "Stratum_5"),
+                        Region  = c("AllEPU", 
+                                    "MAB",
+                                    "GB",
+                                    "GOM",
+                                    "SS"))
+
+```
+
+```{r}
+# function to apply extracting info
+getmodindex <- function(d.name){
+  # read settings
+  modpath <- stringr::str_split(d.name, "/", simplify = TRUE)
+  modname <- modpath[length(modpath)]
+  
+  index <- read.csv(file.path(d.name, "Index.csv"))
+  # return model indices as a dataframe
+  out <- data.frame(modname = modname,
+                    index
+  )
+  
+  return(out)
+}
+
+modcompareindex <- purrr::map_dfr(moddirs23, getmodindex)
+
+```
+
+```{r}
+splitoutput <- modcompareindex %>%
+  dplyr::mutate(Season = modname |> map(str_split, pattern = "_") |> map_chr(c(1,2))) %>%
+  dplyr::mutate(Data = modname |> map(str_split, pattern = "_") |> map_chr(c(1,1))) %>%
+  dplyr::left_join(stratlook) %>%
+  dplyr::filter(Region %in% c("GOM", "GB", "MAB","SS", "AllEPU")) 
+
+benthosmax <- max(splitoutput$Estimate)
+
+
+benthostsmean <- splitoutput %>%
+  dplyr::group_by(modname, Region) %>%
+  dplyr::mutate(fmean = mean(Estimate)) 
+
+```
+
+Do we have `ecodata` trends in any time series? Some. Driven by early 80s spike?
+
+```{r, fig.height=8}
+
+filterEPUs <- c("MAB", "GB", "GOM", "SS", "AllEPU")
+
+currentMonth <- lubridate::month(Sys.Date())
+    currentYear <- lubridate::year(Sys.Date())
+    if (currentMonth > 4) {
+      endShade <- currentYear
+    } else {
+      endShade <- currentYear - 1
+    }
+    shadedRegion <- c(endShade-9,endShade)
+
+    shade.alpha <- 0.3
+    shade.fill <- "lightgrey"
+    lwd <- 1
+    pcex <- 2
+    trend.alpha <- 0.5
+    trend.size <- 2
+    hline.size <- 1
+    line.size <- 2
+    hline.alpha <- 0.35
+    hline.lty <- "dashed"
+    label.size <- 5
+    hjust.label <- 1.5
+    letter_size <- 4
+    errorbar.width <- 0.25
+    x.shade.min <- shadedRegion[1]
+    x.shade.max <- shadedRegion[2]
+
+    setup <- list(
+      shade.alpha = shade.alpha,
+      shade.fill =shade.fill,
+      lwd = lwd,
+      pcex = pcex,
+      trend.alpha = trend.alpha,
+      trend.size = trend.size,
+      line.size = line.size,
+      hline.size = hline.size,
+      hline.alpha = hline.alpha,
+      hline.lty = hline.lty,
+      errorbar.width = errorbar.width,
+      label.size = label.size,
+      hjust.label = hjust.label,
+      letter_size = letter_size,
+      x.shade.min = x.shade.min,
+      x.shade.max = x.shade.max
+    )
+    
+
+    fix<- splitoutput |>
+      dplyr::filter(Data %in% c("macrobenthos"),
+                    Region %in% filterEPUs) |>
+      dplyr::group_by(Region, Season) |>
+      dplyr::summarise(max = max(Estimate))
+    
+    p <- splitoutput |>
+      dplyr::filter(Data %in% c("macrobenthos"),
+                    Region %in% filterEPUs) |>
+      dplyr::group_by(Region, Season) |>
+      dplyr::left_join(fix) |>
+      dplyr::mutate(#Value = Value/resca,
+        Mean = as.numeric(Estimate),
+        SE = Std..Error.for.Estimate,
+        Mean = Mean/max,
+        SE = SE/max,
+        Upper = Mean + SE,
+        Lower = Mean - SE) |>
+      ggplot2::ggplot(ggplot2::aes(x = Time, y = Mean, group = Season))+
+      ggplot2::annotate("rect", fill = setup$shade.fill, alpha = setup$shade.alpha,
+                        xmin = setup$x.shade.min , xmax = setup$x.shade.max,
+                        ymin = -Inf, ymax = Inf) +
+      ggplot2::geom_ribbon(ggplot2::aes(ymin = Lower, ymax = Upper, fill = Season), alpha = 0.5)+
+      ggplot2::geom_point()+
+      ggplot2::geom_line()+
+      ggplot2::ggtitle("Macrobenthos")+
+      ggplot2::ylab(expression("Relative benthos biomass"))+
+      ggplot2::xlab(ggplot2::element_blank())+
+      ggplot2::facet_wrap(Region~Season, ncol = 2)+
+      ecodata::geom_gls()+
+      ecodata::theme_ts()+
+      ecodata::theme_facet()+
+      ecodata::theme_title()
+    
+    p
+
+```
+
+```{r, fig.height=8}
+
+    fix<- splitoutput |>
+      dplyr::filter(Data %in% c("megabenthos"),
+                    Region %in% filterEPUs) |>
+      dplyr::group_by(Region, Season) |>
+      dplyr::summarise(max = max(Estimate))
+    
+    p <- splitoutput |>
+      dplyr::filter(Data %in% c("megabenthos"),
+                    Region %in% filterEPUs) |>
+      dplyr::group_by(Region, Season) |>
+      dplyr::left_join(fix) |>
+      dplyr::mutate(#Value = Value/resca,
+        Mean = as.numeric(Estimate),
+        SE = Std..Error.for.Estimate,
+        Mean = Mean/max,
+        SE = SE/max,
+        Upper = Mean + SE,
+        Lower = Mean - SE) |>
+      ggplot2::ggplot(ggplot2::aes(x = Time, y = Mean, group = Season))+
+      ggplot2::annotate("rect", fill = setup$shade.fill, alpha = setup$shade.alpha,
+                        xmin = setup$x.shade.min , xmax = setup$x.shade.max,
+                        ymin = -Inf, ymax = Inf) +
+      ggplot2::geom_ribbon(ggplot2::aes(ymin = Lower, ymax = Upper, fill = Season), alpha = 0.5)+
+      ggplot2::geom_point()+
+      ggplot2::geom_line()+
+      ggplot2::ggtitle("Megabenthos")+
+      ggplot2::ylab(expression("Relative benthos biomass"))+
+      ggplot2::xlab(ggplot2::element_blank())+
+      ggplot2::facet_wrap(Region~Season, ncol = 2)+
+      ecodata::geom_gls()+
+      ecodata::theme_ts()+
+      ecodata::theme_facet()+
+      ecodata::theme_title()
+    
+    p
+
+```
+
+
+Trend comparisons by season, any difference macro and megabenthos?
+
+```{r, fig.height=8}
+ggplot(benthostsmean |> filter(Season =="fall"), 
+       aes(x=Time, y=((Estimate-fmean)/fmean), colour=Data)) +
+  geom_errorbar(aes(ymin=(Estimate+Std..Error.for.Estimate - fmean)/fmean, 
+                    ymax=(Estimate-Std..Error.for.Estimate - fmean)/fmean))+
+  geom_point(aes(shape=Data))+
+  geom_line()+
+  #acet_wrap(~fct_relevel(Type, "Ecoregion", "Bluefish"), scales = "free_y") +
+  facet_wrap(~Region, scales = "free_y", ncol = 1) +
+  #scale_y_continuous(labels=function(x)round(x/foragemax, digits = 2))+
+  ylab("Relative benthos biomass scaled to time series mean")  +
+  ggtitle("Fall models: trend comparison") +
+  theme(#legend.position = c(1, 0),
+        #legend.justification = c(1, 0)
+        legend.position = "bottom",
+        legend.text = element_text(size=rel(0.5)),
+        legend.key.size = unit(0.5, 'lines'),
+        legend.title = element_text(size=rel(0.5)))
+
+```
+
+```{r, fig.height=8}
+ggplot(benthostsmean |> filter(Season =="spring"), 
+       aes(x=Time, y=((Estimate-fmean)/fmean), colour=Data)) +
+  geom_errorbar(aes(ymin=(Estimate+Std..Error.for.Estimate - fmean)/fmean, 
+                    ymax=(Estimate-Std..Error.for.Estimate - fmean)/fmean))+
+  geom_point(aes(shape=Data))+
+  geom_line()+
+  #acet_wrap(~fct_relevel(Type, "Ecoregion", "Bluefish"), scales = "free_y") +
+  facet_wrap(~Region, scales = "free_y", ncol = 1) +
+  #scale_y_continuous(labels=function(x)round(x/foragemax, digits = 2))+
+  ylab("Relative benthos biomass scaled to time series mean")  +
+  ggtitle("Spring models: trend comparison") +
+  theme(#legend.position = c(1, 0),
+        #legend.justification = c(1, 0)
+        legend.position = "bottom",
+        legend.text = element_text(size=rel(0.5)),
+        legend.key.size = unit(0.5, 'lines'),
+        legend.title = element_text(size=rel(0.5)))
+
+```
+
+Scale comparisons by season, any difference macro and megabenthos? Yes, way more macrobenthos, as expected.
+
+```{r, fig.height=8}
+
+ggplot(splitoutput |> filter(Season =="fall"), 
+       aes(x=Time, y=Estimate, colour=Data)) +
+  #geom_errorbar(aes(ymin=Estimate+Std..Error.for.Estimate, ymax=Estimate-Std..Error.for.Estimate))+
+  geom_ribbon(aes(ymin=Estimate+Std..Error.for.Estimate, ymax=Estimate-Std..Error.for.Estimate, fill=Data), linetype = 0, alpha = 0.15)+
+  geom_point(aes(shape=Data))+
+  geom_line()+
+  #acet_wrap(~fct_relevel(Type, "Ecoregion", "Bluefish"), scales = "free_y") +
+  facet_wrap(~Region, scales = "free_y", ncol = 1) +
+  scale_y_continuous(labels=function(x)round(x/benthosmax, digits = 2))+
+  ylab("Relative benthos biomass scaled to maximum")  +
+  ggtitle("Fall models: scale comparison")+
+  theme(#legend.position = c(1, 0),
+        #legend.justification = c(1, 0)
+        legend.position = "bottom",
+        legend.text = element_text(size=rel(0.5)),
+        legend.key.size = unit(0.5, 'lines'),
+        legend.title = element_text(size=rel(0.5)))
+
+```
+
+
+```{r, fig.height=8}
+
+ggplot(splitoutput |> filter(Season =="spring"), 
+       aes(x=Time, y=Estimate, colour=Data)) +
+  #geom_errorbar(aes(ymin=Estimate+Std..Error.for.Estimate, ymax=Estimate-Std..Error.for.Estimate))+
+  geom_ribbon(aes(ymin=Estimate+Std..Error.for.Estimate, ymax=Estimate-Std..Error.for.Estimate, fill=Data), linetype = 0, alpha = 0.15)+
+  geom_point(aes(shape=Data))+
+  geom_line()+
+  #acet_wrap(~fct_relevel(Type, "Ecoregion", "Bluefish"), scales = "free_y") +
+  facet_wrap(~Region, scales = "free_y", ncol = 1) +
+  scale_y_continuous(labels=function(x)round(x/benthosmax, digits = 2))+
+  ylab("Relative benthos biomass scaled to maximum")  +
+  ggtitle("Spring models: scale comparison")+
+  theme(#legend.position = c(1, 0),
+        #legend.justification = c(1, 0)
+        legend.position = "bottom",
+        legend.text = element_text(size=rel(0.5)),
+        legend.key.size = unit(0.5, 'lines'),
+        legend.title = element_text(size=rel(0.5)))
+
+```
+
+# Center of gravity exploration
+
+Has benthos shifted along the coast?
+
+```{r, eval=FALSE}
+
+library(FishStatsUtils)
+
+getcogVAST <- function(d.name){
+  
+  fit <- VAST::reload_model(readRDS(paste0(d.name,"/fit.rds")))
+  
+  dir.create(paste0(d.name,"/test"))
+  
+  cogout <- FishStatsUtils::plot_range_index(Sdreport = fit$parameter_estimates$SD, 
+                                             Report = fit$Report, 
+                                             TmbData = fit$data_list,
+                                             year_labels = as.numeric(fit$year_labels),
+                                             years_to_plot = fit$years_to_plot,
+                                             Znames = colnames(fit$data_list$Z_xm))
+  
+  saveRDS(cogout, here::here("benthos/pyindex/macrobenthos_spring_500_cov/cogout.rds"))
+  
+ 
+  
+}
+
+purrr::map(moddirs[3], getcogVAST)
+```
+
+Center of gravity plots with `ecodata` trends
+
+```{r}
+
+plotcog <- function(d.name){
+  
+  cogout <- readRDS(paste0(d.name,"/cogout.rds"))
+  modpath <- unlist(str_split(d.name, pattern = "/"))
+  modname <- modpath[length(modpath)]
+  
+  cogdat <- as.data.frame(cogout$COG_Table) |>
+    dplyr::mutate(direction = ifelse(m==1, "Eastward", "Northward"))
+  
+  ggplot2::ggplot(cogdat, ggplot2::aes(x = Year, y = COG_hat)) + 
+    ggplot2::geom_point() + 
+    ecodata::geom_gls() + 
+    ggplot2::labs(y = "Center of gravity, km") +
+    ggplot2::facet_wrap(~direction, scales = "free_y") + 
+    ecodata::theme_facet()+
+    ggplot2::ggtitle(modname)
+}
+
+purrr::map(moddirs23, plotcog)
+
+```
+Density maps
+
+```{r, , results = "asis"}
+for(d.name in moddirs23){
+  
+  modpath <- unlist(str_split(d.name, pattern = "/"))
+  modname <- modpath[length(modpath)]
+  
+  cat(modname, "\n")
+  cat(paste0("![](",d.name, "/ln_density-predicted.png)"))
+  cat("\n\n")
+  
+}
+  
+  
+                        
+```
+
+# What prey are in the raw input data?
+
+## Macrobenthos composition over time in stomachs
+
+NEFSC data only
+
+```{r, fig.height=8}
+macrobenall_stn <- readRDS(here::here("benthos/fhdata/macrobenall_stn.rds"))
+
+ MAB <- data.frame(stratum = c(1010:1080, 1100:1120, 1600:1750, 3010:3450, 3470, 3500, 3510),
+                      EPU = "MAB")
+ 
+ GB <- data.frame(stratum = c(1090, 1130:1210, 1230, 1250, 3460, 3480, 3490, 3520:3550),
+                  EPU = "GB")
+ 
+ GOM <- data.frame(stratum = c(1220, 1240, 1260:1290, 1360:1400, 3560:3830),
+                   EPU = "GOM")
+  
+EPUlook <- dplyr::bind_rows(MAB, GB, GOM)
+
+# object is called prey
+load(here::here("benthos/data/prey.RData")) #original mappings from June 2023
+
+addtomacro <- prey |>
+  dplyr::filter(RPATH == "Megabenthos") |> 
+  dplyr::filter(PYNAM %in% c("ALBUNEA PARETII", "EMERITA TALPOIDA", "RANILIA MURICATA", "HIPPIDAE"))
+
+megaben <- prey |>
+  dplyr::filter(RPATH == "Megabenthos") |>
+  dplyr::filter(!PYNAM %in% c("ALBUNEA PARETII", "EMERITA TALPOIDA", "RANILIA MURICATA", "HIPPIDAE"))
+
+macroben <- prey |>
+  dplyr::filter(RPATH == "Macrobenthos") |> 
+  dplyr::filter(!PYNAM %in% c("PECTINIDAE", "PECTINIDAE SHELL", "PECTINIDAE VISCERA")) |>
+  dplyr::bind_rows(addtomacro)
+
+macroben.analcoll <- macroben |>
+  dplyr::select(PYNAM, PYCOMNAM, AnalSci, AnalCom, CollSci, Collcom)
+
+collcolors <- data.frame(prey = unique(macroben.analcoll$Collcom),
+                        #preycol = colors()[seq(1, length(colors()), 15)])
+                        preycol = viridis::turbo(length(unique(macroben.analcoll$Collcom))))
+
+
+macrobensppwt <- macrobenall_stn %>%
+  dplyr::left_join(EPUlook) %>%
+  dplyr::filter(macrobenthos=="macroben",
+                !is.na(EPU),
+                !is.na(season_ng)) %>%
+  dplyr::group_by(year, season_ng, EPU, macrobenpynam) %>%
+  dplyr::summarise(pysum = sum(macrobenpywt)) %>%
+  dplyr::mutate(pyprop = pysum / sum(pysum)) %>%
+  dplyr::ungroup() %>%
+  dplyr::left_join(macroben.analcoll, by =  dplyr::join_by(macrobenpynam == PYNAM)) |>
+  dplyr::left_join(collcolors, by =  dplyr::join_by(Collcom == prey))
+
+preycols <- macrobensppwt$preycol
+names(preycols) <- as.factor(macrobensppwt$macrobenpynam)
+
+preyaggcols <- macrobensppwt$preycol
+names(preyaggcols) <- as.factor(macrobensppwt$Collcom)
+
+
+top20spp <- macrobensppwt |>
+  dplyr::group_by(season_ng, EPU, Collcom) |>
+  dplyr::summarise(meanprop = mean(pyprop, na.rm = TRUE),
+                   maxprop = max(pyprop, na.rm = TRUE)) |>
+  dplyr::ungroup() |>
+  dplyr::arrange(EPU, season_ng, desc(meanprop))
+
+plotDietCompBar <- function(dat, metric, catname, plotcol, title=NULL){   #defines the name of the function and the requied inputs
+  
+dat %>% 
+  filter(!is.na(.data[[metric]])) %>%          #take out the NA values (literally "not is NA")
+  ggplot(aes(x=year, y=.data[[metric]], fill=.data[[catname]])) +     #year on x axis, %diet comp on y
+  geom_bar(width = 1, stat = "identity", position="fill") +    #stacked bar chart
+  scale_fill_manual(values=plotcol) +         #custom colors
+  ecodata::theme_facet() +                    #simplify
+  facet_grid(fct_relevel(EPU,  "GOM", "GB", "MAB")~
+               fct_relevel(season_ng, "SPRING", "FALL")) + #separate by ordered epu and season
+  labs(y = "% composition",              #add sensible labels
+       title = title) 
+    
+}   
+
+addSmallLegend <- function(myPlot, pointSize = 2, textSize = 6, spaceLegend = 0.5) {
+    myPlot +
+        guides(shape = guide_legend(override.aes = list(size = pointSize)),
+               color = guide_legend(override.aes = list(size = pointSize)),
+               fill = guide_legend(ncol = 1)) +
+        theme(legend.title = element_text(size = textSize), 
+              legend.text  = element_text(size = textSize),
+              legend.key.size = unit(spaceLegend, "lines"))
+}
+
+pall <- plotDietCompBar(dat=macrobensppwt, 
+                          metric="pysum", 
+                        catname="macrobenpynam",
+                        plotcol=preycols,
+                          title="Diet composition")  
+
+pcat <- plotDietCompBar(dat=macrobensppwt, 
+                          metric="pysum", 
+                        catname="Collcom",
+                        plotcol=preyaggcols,
+                          title="Diet composition")
+
+addSmallLegend(pall)
+
+addSmallLegend(pcat)
+
+```
+
+Collcom trends by EPU
+
+```{r, fig.height=8}
+macrobensppwt |>
+  dplyr::filter(EPU=="GOM") |>
+  ggplot2::ggplot(ggplot2::aes(x=year, y=pyprop, colour = season_ng)) +
+  ggplot2::geom_line() +
+  ecodata::theme_facet() +
+  ggplot2::facet_wrap(~Collcom) +
+  ggplot2::ggtitle("GOM Macro") +
+  ggplot2::theme(legend.position = "bottom")
+```
+
+```{r, fig.height=8}
+macrobensppwt |>
+  dplyr::filter(EPU=="GB") |>
+  ggplot2::ggplot(ggplot2::aes(x=year, y=pyprop, colour = season_ng)) +
+  ggplot2::geom_line() +
+  ecodata::theme_facet() +
+  ggplot2::facet_wrap(~Collcom) +
+  ggplot2::ggtitle("GB Macro")+
+  ggplot2::theme(legend.position = "bottom")
+```
+
+```{r, fig.height=8}
+macrobensppwt |>
+  dplyr::filter(EPU=="MAB") |>
+  ggplot2::ggplot(ggplot2::aes(x=year, y=pyprop, colour = season_ng)) +
+  ggplot2::geom_line() +
+  ecodata::theme_facet() +
+  ggplot2::facet_wrap(~Collcom) +
+  ggplot2::ggtitle("MAB Macro")+
+  ggplot2::theme(legend.position = "bottom")
+```
+
+## Megabenthos composition over time in stomachs
+
+NEFSC data only
+
+```{r, fig.height=8}
+megabenall_stn <- readRDS(here::here("benthos/fhdata/megabenall_stn.rds"))
+
+
+megaben.analcoll <- megaben |>
+  dplyr::select(PYNAM, PYCOMNAM, AnalSci, AnalCom, CollSci, Collcom)
+
+collcolors <- data.frame(prey = unique(megaben.analcoll$Collcom),
+                        #preycol = colors()[seq(1, length(colors()), 15)])
+                        preycol = viridis::turbo(length(unique(megaben.analcoll$Collcom))))
+
+
+megabensppwt <- megabenall_stn %>%
+  dplyr::left_join(EPUlook) %>%
+  dplyr::filter(megabenthos=="megaben",
+                !is.na(EPU),
+                !is.na(season_ng)) %>%
+  dplyr::group_by(year, season_ng, EPU, megabenpynam) %>%
+  dplyr::summarise(pysum = sum(megabenpywt)) %>%
+  dplyr::mutate(pyprop = pysum / sum(pysum)) %>%
+  dplyr::ungroup() %>%
+  dplyr::left_join(megaben.analcoll, by =  dplyr::join_by(megabenpynam == PYNAM)) |>
+  dplyr::left_join(collcolors, by =  dplyr::join_by(Collcom == prey))
+
+preycols <- megabensppwt$preycol
+names(preycols) <- as.factor(megabensppwt$megabenpynam)
+
+preyaggcols <- megabensppwt$preycol
+names(preyaggcols) <- as.factor(megabensppwt$Collcom)
+
+
+top20spp <- megabensppwt |>
+  dplyr::group_by(season_ng, EPU, Collcom) |>
+  dplyr::summarise(meanprop = mean(pyprop, na.rm = TRUE),
+                   maxprop = max(pyprop, na.rm = TRUE)) |>
+  dplyr::ungroup() |>
+  dplyr::arrange(EPU, season_ng, desc(meanprop))
+
+
+pall <- plotDietCompBar(dat=megabensppwt, 
+                          metric="pysum", 
+                        catname="megabenpynam",
+                        plotcol=preycols,
+                          title="Diet composition")  
+
+pcat <- plotDietCompBar(dat=megabensppwt, 
+                          metric="pysum", 
+                        catname="Collcom",
+                        plotcol=preyaggcols,
+                          title="Diet composition")
+
+addSmallLegend(pall)
+
+addSmallLegend(pcat)
+
+```
+
+Collcom trends by EPU
+
+```{r, fig.height=8}
+megabensppwt |>
+  dplyr::filter(EPU=="GOM") |>
+  ggplot2::ggplot(ggplot2::aes(x=year, y=pyprop, colour = season_ng)) +
+  ggplot2::geom_line() +
+  ecodata::theme_facet() +
+  ggplot2::facet_wrap(~Collcom) +
+  ggplot2::ggtitle("GOM Mega") +
+  ggplot2::theme(legend.position = "bottom")
+```
+
+```{r, fig.height=8}
+megabensppwt |>
+  dplyr::filter(EPU=="GB") |>
+  ggplot2::ggplot(ggplot2::aes(x=year, y=pyprop, colour = season_ng)) +
+  ggplot2::geom_line() +
+  ecodata::theme_facet() +
+  ggplot2::facet_wrap(~Collcom) +
+  ggplot2::ggtitle("GB Mega")+
+  ggplot2::theme(legend.position = "bottom")
+```
+
+```{r, fig.height=8}
+megabensppwt |>
+  dplyr::filter(EPU=="MAB") |>
+  ggplot2::ggplot(ggplot2::aes(x=year, y=pyprop, colour = season_ng)) +
+  ggplot2::geom_line() +
+  ecodata::theme_facet() +
+  ggplot2::facet_wrap(~Collcom) +
+  ggplot2::ggtitle("MAB Mega")+
+  ggplot2::theme(legend.position = "bottom")
+```
+
+
+# Have the benthivores used as samplers changed over time?
+
+
+
+# Any other sources to compare with?
+
+NEFSC benthic database available here: https://www.obis.org/dataset/e7c86904-aac7-4a17-a895-99a54c430d80 
+
+Full dataset in local `data-raw/NEFSCbenthicdatabase` folder

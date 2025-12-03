@@ -23,7 +23,7 @@ bluepyagg_stn <- readRDS(here::here(
 
 # make SST column that uses surftemp unless missing or 0
 # there are 3 surftemp 0 values in the dataset, all with oisst > 15
-bluepyagg_stn <- bluepyagg_stn %>%
+bluepyagg_stn <- bluepyagg_stn |>
   dplyr::mutate(
     sstfill = ifelse((is.na(surftemp) | surftemp == 0), oisst, surftemp)
   )
@@ -31,12 +31,12 @@ bluepyagg_stn <- bluepyagg_stn %>%
 # filter to assessment years at Tony's suggestion
 # code Vessel as AL=0, HB=1, NEAMAP=2
 
-bluepyagg_stn_fall <- bluepyagg_stn %>%
+bluepyagg_stn_fall <- bluepyagg_stn |>
   filter(season_ng == "FALL") |>
   mutate(
     AreaSwept_km2 = 1, #Elizabeth's code
     Vessel = as.numeric(as.factor(vessel)) - 1
-  ) %>%
+  ) |>
   dplyr::select(
     Catch_g = meanbluepywt, #use bluepywt for individuals input in example
     Year = year,
@@ -48,16 +48,16 @@ bluepyagg_stn_fall <- bluepyagg_stn %>%
     npiscsp,
     oisst, #leaves out everything before 1982
     sstfill
-  ) %>%
-  na.omit() %>%
+  ) |>
+  na.omit() |>
   as.data.frame()
 
-bluepyagg_stn_spring <- bluepyagg_stn %>%
+bluepyagg_stn_spring <- bluepyagg_stn |>
   filter(season_ng == "SPRING") |>
   mutate(
     AreaSwept_km2 = 1, #Elizabeth's code
     Vessel = as.numeric(as.factor(vessel)) - 1
-  ) %>%
+  ) |>
   dplyr::select(
     Catch_g = meanbluepywt,
     Year = year,
@@ -69,8 +69,8 @@ bluepyagg_stn_spring <- bluepyagg_stn %>%
     npiscsp,
     oisst, #leaves out everything before 1982
     sstfill
-  ) %>%
-  na.omit() %>%
+  ) |>
+  na.omit() |>
   as.data.frame()
 
 
@@ -79,39 +79,39 @@ bluepyagg_stn_spring <- bluepyagg_stn %>%
 # NEFSC strata limits https://github.com/James-Thorson-NOAA/VAST/issues/302
 
 # using VAST built in grid because custom one is breaking Oct 2024
-MAB2 <- FishStatsUtils::northwest_atlantic_grid %>%
-  dplyr::filter(stratum_number %in% MAB) %>%
-  dplyr::select(stratum_number) %>%
+MAB2 <- FishStatsUtils::northwest_atlantic_grid |>
+  dplyr::filter(EPU == "Mid_Atlantic_Bight") |>
+  dplyr::select(stratum_number) |>
   dplyr::distinct()
 
 # Georges Bank EPU
-GB2 <- FishStatsUtils::northwest_atlantic_grid %>%
-  dplyr::filter(stratum_number %in% GB) %>%
-  dplyr::select(stratum_number) %>%
+GB2 <- FishStatsUtils::northwest_atlantic_grid |>
+  dplyr::filter(EPU == "Georges_Bank") |>
+  dplyr::select(stratum_number) |>
   dplyr::distinct()
 
 # gulf of maine EPU (for SOE)
-GOM2 <- FishStatsUtils::northwest_atlantic_grid %>%
-  dplyr::filter(stratum_number %in% GOM) %>%
-  dplyr::select(stratum_number) %>%
+GOM2 <- FishStatsUtils::northwest_atlantic_grid |>
+  dplyr::filter(EPU == "Gulf_of_Maine") |>
+  dplyr::select(stratum_number) |>
   dplyr::distinct()
 
 # scotian shelf EPU (for SOE)
-SS2 <- FishStatsUtils::northwest_atlantic_grid %>%
-  dplyr::filter(stratum_number %in% SS) %>%
-  dplyr::select(stratum_number) %>%
+SS2 <- FishStatsUtils::northwest_atlantic_grid |>
+  dplyr::filter(EPU =="Scotian_Shelf") |>
+  dplyr::select(stratum_number) |>
   dplyr::distinct()
 
 # needed to cover the whole northwest atlantic grid--lets try without
-allother2 <- FishStatsUtils::northwest_atlantic_grid %>%
-  dplyr::filter(!stratum_number %in% c(MAB, GB, GOM, SS)) %>%
-  dplyr::select(stratum_number) %>%
+allother2 <- FishStatsUtils::northwest_atlantic_grid |>
+  dplyr::filter(!EPU %in% c('Mid_Atlantic_Bight', 'Georges_Bank', 'Gulf_of_Maine', 'Scotian_Shelf')) |>
+  dplyr::select(stratum_number) |>
   dplyr::distinct()
 
 # all epus
-allEPU2 <- FishStatsUtils::northwest_atlantic_grid %>%
-  dplyr::filter(stratum_number %in% c(MAB, GB, GOM, SS)) %>%
-  dplyr::select(stratum_number) %>%
+allEPU2 <- FishStatsUtils::northwest_atlantic_grid |>
+  dplyr::filter(EPU %in% c('Mid_Atlantic_Bight', 'Georges_Bank', 'Gulf_of_Maine', 'Scotian_Shelf')) |>
+  dplyr::select(stratum_number) |>
   dplyr::distinct()
 
 # default configs, not really specified anyway
@@ -157,12 +157,13 @@ settings = make_settings(
   strata.limits = strata.limits,
   purpose = "index2",
   bias.correct = TRUE,
-  OverdispersionConfig = OverdispersionConfig
+  OverdispersionConfig = OverdispersionConfig,
+  mesh_package = 'fmesher'
 )
 
 ## Run model fall ----
 
-working_dir <- here::here(sprintf("forage/2025_dev/outputs/fall_model"))
+working_dir <- here::here(sprintf("forage/2025_dev/outputs/fall_model_updated"))
 
 if (!dir.exists(working_dir)) {
   dir.create(working_dir)
@@ -196,7 +197,7 @@ saveRDS(cog, here::here(working_dir, paste0("fall_cog.rds")))
 
 ## Run model spring ----
 
-working_dir <- here::here(sprintf("forage/2025_dev/outputs/spring_model"))
+working_dir <- here::here(sprintf("forage/2025_dev/outputs/spring_model_updated"))
 
 if (!dir.exists(working_dir)) {
   dir.create(working_dir)

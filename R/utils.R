@@ -73,7 +73,7 @@ download_and_process_oisst <- function(
 
   for (i in years) {
     # Define file paths and URLs for the current year.
-    nc_filename <- paste0(i, ".nc")
+    nc_filename <- here::here(paste0(i, ".nc"))
     grd_filename <- here::here(
       out_dir,
       paste0("test_", i, ".grd")
@@ -531,7 +531,7 @@ SOEinputs <- function(infile, season, stratlook, outfile) {
 }
 
 # I can definitely help you with that.
-# I'll write the documentation for your extract_cog function using the Roxygen2 format, 
+# I'll write the documentation for your extract_cog function using the Roxygen2 format,
 # which is the standard for R packages.
 
 # Overview of the Documentation

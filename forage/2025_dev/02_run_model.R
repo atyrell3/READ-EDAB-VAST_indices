@@ -78,39 +78,44 @@ bluepyagg_stn_spring <- bluepyagg_stn |>
 # (turning off bias.correct to save time for example)
 # NEFSC strata limits https://github.com/James-Thorson-NOAA/VAST/issues/302
 
+MAB <- c(1010:1080, 1100:1120, 1600:1750, 3010:3450, 3470, 3500, 3510)
+GB  <- c(1090, 1130:1210, 1230, 1250, 3460, 3480, 3490, 3520:3550)
+GOM <- c(1220, 1240, 1260:1290, 1360:1400, 3560:3830)
+SS  <- c(1300:1352, 3840:3990)
+
 # using VAST built in grid because custom one is breaking Oct 2024
 MAB2 <- FishStatsUtils::northwest_atlantic_grid |>
-  dplyr::filter(EPU == "Mid_Atlantic_Bight") |>
+  dplyr::filter(stratum_number %in% MAB) |>
   dplyr::select(stratum_number) |>
   dplyr::distinct()
 
 # Georges Bank EPU
 GB2 <- FishStatsUtils::northwest_atlantic_grid |>
-  dplyr::filter(EPU == "Georges_Bank") |>
+  dplyr::filter(stratum_number %in% GB) |>
   dplyr::select(stratum_number) |>
   dplyr::distinct()
 
 # gulf of maine EPU (for SOE)
 GOM2 <- FishStatsUtils::northwest_atlantic_grid |>
-  dplyr::filter(EPU == "Gulf_of_Maine") |>
+  dplyr::filter(stratum_number %in% GOM) |>
   dplyr::select(stratum_number) |>
   dplyr::distinct()
 
 # scotian shelf EPU (for SOE)
 SS2 <- FishStatsUtils::northwest_atlantic_grid |>
-  dplyr::filter(EPU =="Scotian_Shelf") |>
+  dplyr::filter(stratum_number %in% SS) |>
   dplyr::select(stratum_number) |>
   dplyr::distinct()
 
 # needed to cover the whole northwest atlantic grid--lets try without
 allother2 <- FishStatsUtils::northwest_atlantic_grid |>
-  dplyr::filter(!EPU %in% c('Mid_Atlantic_Bight', 'Georges_Bank', 'Gulf_of_Maine', 'Scotian_Shelf')) |>
+  dplyr::filter(!stratum_number %in% c(MAB, GB, GOM, SS)) |>
   dplyr::select(stratum_number) |>
   dplyr::distinct()
 
 # all epus
 allEPU2 <- FishStatsUtils::northwest_atlantic_grid |>
-  dplyr::filter(EPU %in% c('Mid_Atlantic_Bight', 'Georges_Bank', 'Gulf_of_Maine', 'Scotian_Shelf')) |>
+  dplyr::filter(stratum_number %in% c(MAB, GB, GOM, SS)) |>
   dplyr::select(stratum_number) |>
   dplyr::distinct()
 

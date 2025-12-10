@@ -385,6 +385,7 @@ stations <- bluepyagg_stn_all |>
   sf::st_as_sf(coords = c("declon", "declat"), crs = 4326, remove = FALSE)
 
 
+
 #list of SST dataframes
 SSTdfs <- list.files(
   here("forage/static/sst"),

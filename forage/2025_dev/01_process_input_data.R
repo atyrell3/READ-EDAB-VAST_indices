@@ -362,11 +362,16 @@ bluepyagg_stn_all <- left_join(bluepyagg_stn_all, NEAMAPidSST, by = "id") |>
 
 # Download and process OISST data for the specified years.
 # only run for new year(s)
+## TODO: this function doesn't work,
+## tries to download oisst within the function but does not succeed
+## need to update to reference the data from the network drive instead
+
 # download_and_process_oisst(
 #   years = 2023,
 #   varname = "sst",
 #   nc_to_raster = nc_to_raster,
-#   raster_to_sstdf = raster_to_sstdf
+#   raster_to_sstdf = raster_to_sstdf,
+#   out_dir = here::here("forage/static/sst")
 # )
 
 stations <- bluepyagg_stn_all |>
@@ -380,52 +385,6 @@ stations <- bluepyagg_stn_all |>
   sf::st_as_sf(coords = c("declon", "declat"), crs = 4326, remove = FALSE)
 
 
-# function join_oisst_to_stations expects each year of SST to be in its own rds file
-# These files are then joined to stations
-# Updated SST data has all years in one csv file
-# Creating .rds files for the updated years to then fit with old code
-
-sst_update <- read.csv(here::here("2025_shared_data/NEAMAP SST_2007_2024.csv"))
-
-sst2023 <- sst_update |> 
-  dplyr::filter(year == 2023) |>
-  dplyr::select(longitude, latitude, year, month, day, SST) |>
-  dplyr::rename(
-    Lon = longitude,
-    Lat = latitude,
-    sst = SST
-  ) |> 
-  dplyr::mutate(
-    year = as.character(year),
-    month = as.character(month),
-    day = as.character(day)
-  )
-
-
-
-saveRDS(
-  sst2023,
-  here::here("forage/static/sst/sst2023.rds")
-)
-
-sst2024 <- sst_update |> 
-  dplyr::filter(year == 2024) |>
-  dplyr::select(longitude, latitude, year, month, day, SST) |>
-  dplyr::rename(
-    Lon = longitude,
-    Lat = latitude,
-    sst = SST
-  ) |> 
-  dplyr::mutate(
-    year = as.character(year),
-    month = as.character(month),
-    day = as.character(day)
-  )
-
-saveRDS(
-  sst2024,
-  here::here("forage/static/sst/sst2024.rds")
-)
 
 #list of SST dataframes
 SSTdfs <- list.files(

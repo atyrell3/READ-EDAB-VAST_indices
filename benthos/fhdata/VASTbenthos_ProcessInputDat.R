@@ -476,13 +476,17 @@ stations <- macrobenagg_stn_all %>%
 
 
 #list of SST dataframes
-BTdfs <- list.files(here("benthos/data-raw/bottomtemp/bt_data/"), pattern = "*.rds")
+# BTdfs <- list.files(here("benthos/data-raw/bottomtemp/bt_data/"), pattern = "*.rds")
+
+# 12/05/2025. Joe created a workflow to update GLORYS data. Reading in from there now -MTG
+# 
+BTdfs <- list.files(("~/EDAB_Datasets/GLORYS/glorys_bottomT/annual_bottomT_vast/"), pattern = "*.rds")
 
 dietstn_mod_bt <- tibble()
 
 
 for(df in BTdfs){
-  btdf <- readRDS(paste0(here("benthos/data-raw/bottomtemp/bt_data/", df)))
+  btdf <- readRDS(paste0("~/EDAB_Datasets/GLORYS/glorys_bottomT/annual_bottomT_vast/", df))
   
   if(unique(btdf$year) %in% unique(stations$year)){
     # keep only bluefish dates in SST year

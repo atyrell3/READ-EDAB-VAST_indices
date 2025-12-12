@@ -292,7 +292,7 @@ Lets do this from the beginning in the `VASTbenthos_ProcessInputDat.R script`. N
 
 ```{r,eval=FALSE}
 
-megabenagg_stn_all <- readRDS(here("fhdata/megabenagg_stn_all.rds"))
+megabenagg_stn_all <- readRDS(here::here("benthos/fhdata/megabenagg_stn_all.rds"))
 
 stations <- megabenagg_stn_all %>%
   #dplyr::mutate(day = str_pad(day, 2, pad='0'),
@@ -307,18 +307,24 @@ stations <- megabenagg_stn_all %>%
 
 
 #list of SST dataframes
-BTdfs <- list.files(here("data-raw/bottomtemp/bt_data/"), pattern = "*.rds")
+BTdfs <- list.files(("~/EDAB_Datasets/GLORYS/glorys_bottomT/annual_bottomT_vast/"), pattern = "*.rds")
 
 dietstn_mod_bt <- tibble()
 
 
 for(df in BTdfs){
-  btdf <- readRDS(paste0(here("data-raw/bottomtemp/bt_data/", df)))
+  btdf <- readRDS(paste0("~/EDAB_Datasets/GLORYS/glorys_bottomT/annual_bottomT_vast/", df))
   
-  if(unique(btdf$year) %in% unique(stations$year)){
-    # keep only bluefish dates in SST year
-    stationsyr <- stations %>%
-      filter(year == unique(btdf$year))
+    # intersection of dates
+  common_dates <- intersect(unique(btdf$date), unique(stations$date))
+
+  if (length(common_dates) == 0) {
+    message("Skipping ", df, ": no matching dates.")
+    next
+  }
+  
+     stationsyr <- stations %>%
+    filter(date %in% common_dates)
     
     # keep only modeled bt days in survey dataset
     btdf_survdays <- btdf %>%
@@ -336,11 +342,21 @@ for(df in BTdfs){
     
     #https://stackoverflow.com/questions/71959927/spatial-join-two-data-frames-by-nearest-feature-and-date-in-r
     
-    yrdietmodBT <- do.call('rbind', lapply(split(stationsyr, 1:nrow(stationsyr)), function(x) {
-      sf::st_join(x, btdf_survdays[btdf_survdays$numdate == unique(x$ numdate),],
-                  #join = st_nearest_feature
-                  join = st_nn, k = 1, progress = FALSE
-      )
+    yrdietmodBT <- do.call("rbind",
+  lapply(split(stationsyr, 1:nrow(stationsyr)), function(x) {
+    
+    y_sub <- btdf_survdays[btdf_survdays$numdate == unique(x$numdate), ]
+    
+    # if no BT data for that date, skip this row
+    if (nrow(y_sub) == 0) return(NULL)
+
+    sf::st_join(
+      x,
+      y_sub,
+      join = st_nn,
+      k = 1,
+      progress = FALSE
+    )
     }))
     
     #   #datatable solution--works but doesnt seem faster?
@@ -354,7 +370,6 @@ for(df in BTdfs){
     
     dietstn_mod_bt <- rbind(dietstn_mod_bt,  yrdietmodBT)
   }
-}
 
 #saveRDS(dietstn_OISST, here("data-raw/dietstn_OISST.rds"))
 
@@ -373,7 +388,7 @@ dietstn_mod_bt_merge <- dietstn_mod_bt %>%
 
 megabenagg_stn_all_modBT <- left_join(megabenagg_stn_all, dietstn_mod_bt_merge)
 
-saveRDS(megabenagg_stn_all_modBT, here::here("fhdata/megabenagg_stn_all_modBT.rds"))
+saveRDS(megabenagg_stn_all_modBT, here::here("benthos/fhdata/megabenagg_stn_all_modBT.rds"))
 
 ```
 
@@ -381,7 +396,7 @@ Same deal for macrobenthos:
 
 ```{r,eval=FALSE}
 
-macrobenagg_stn_all <- readRDS(here("fhdata/macrobenagg_stn_all.rds"))
+macrobenagg_stn_all <- readRDS(here("benthos/fhdata/macrobenagg_stn_all.rds"))
 
 stations <- macrobenagg_stn_all %>%
   #dplyr::mutate(day = str_pad(day, 2, pad='0'),
@@ -396,18 +411,24 @@ stations <- macrobenagg_stn_all %>%
 
 
 #list of SST dataframes
-BTdfs <- list.files(here("data-raw/bottomtemp/bt_data/"), pattern = "*.rds")
+BTdfs <- list.files(("~/EDAB_Datasets/GLORYS/glorys_bottomT/annual_bottomT_vast/"), pattern = "*.rds")
 
 dietstn_mod_bt <- tibble()
 
 
 for(df in BTdfs){
-  btdf <- readRDS(paste0(here("data-raw/bottomtemp/bt_data/", df)))
+  btdf <- readRDS(paste0("~/EDAB_Datasets/GLORYS/glorys_bottomT/annual_bottomT_vast/", df))
   
-  if(unique(btdf$year) %in% unique(stations$year)){
-    # keep only bluefish dates in SST year
-    stationsyr <- stations %>%
-      filter(year == unique(btdf$year))
+    # intersection of dates
+  common_dates <- intersect(unique(btdf$date), unique(stations$date))
+
+  if (length(common_dates) == 0) {
+    message("Skipping ", df, ": no matching dates.")
+    next
+  }
+  
+     stationsyr <- stations %>%
+    filter(date %in% common_dates)
     
     # keep only modeled bt days in survey dataset
     btdf_survdays <- btdf %>%
@@ -425,11 +446,21 @@ for(df in BTdfs){
     
     #https://stackoverflow.com/questions/71959927/spatial-join-two-data-frames-by-nearest-feature-and-date-in-r
     
-    yrdietmodBT <- do.call('rbind', lapply(split(stationsyr, 1:nrow(stationsyr)), function(x) {
-      sf::st_join(x, btdf_survdays[btdf_survdays$numdate == unique(x$ numdate),],
-                  #join = st_nearest_feature
-                  join = st_nn, k = 1, progress = FALSE
-      )
+    yrdietmodBT <- do.call("rbind",
+  lapply(split(stationsyr, 1:nrow(stationsyr)), function(x) {
+    
+    y_sub <- btdf_survdays[btdf_survdays$numdate == unique(x$numdate), ]
+    
+    # if no BT data for that date, skip this row
+    if (nrow(y_sub) == 0) return(NULL)
+
+    sf::st_join(
+      x,
+      y_sub,
+      join = st_nn,
+      k = 1,
+      progress = FALSE
+    )
     }))
     
     #   #datatable solution--works but doesnt seem faster?
@@ -443,7 +474,6 @@ for(df in BTdfs){
     
     dietstn_mod_bt <- rbind(dietstn_mod_bt,  yrdietmodBT)
   }
-}
 
 #saveRDS(dietstn_OISST, here("data-raw/dietstn_OISST.rds"))
 
@@ -462,7 +492,7 @@ dietstn_mod_bt_merge <- dietstn_mod_bt %>%
 
 macrobenagg_stn_all_modBT <- left_join(macrobenagg_stn_all, dietstn_mod_bt_merge)
 
-saveRDS(macrobenagg_stn_all_modBT, here::here("fhdata/macrobenagg_stn_all_modBT.rds"))
+saveRDS(macrobenagg_stn_all_modBT, here::here("benthos/fhdata/macrobenagg_stn_all_modBT.rds"))
 
 ```
 

@@ -261,7 +261,8 @@ run_vast_model(
 taxa_cols <- list(
   "smcope" = "smallcopeSOE_100m3",
   "calfin" = "calfin_100m3",
-  "lgcope" = "lgcopeALL_100m3"
+  "lgcope" = "lgcopeALL_100m3",
+  "smcopeall" = "smallcopeALL_100m3"
 )
 
 # Define the season configurations (No annual)
@@ -315,7 +316,8 @@ for (taxa_name in names(taxa_cols)) {
 }
 
 ## Copepod model runs (separately by season, no annual) ---------------------------------------
-## small Copepod models ----
+
+## small SOE Copepod models ----
 
 ### fall ----
 # Fall first, no DOY or temp covariate
@@ -331,6 +333,27 @@ run_vast_model(
 run_vast_model(
   data = smcope_spring,
   out_dir = here::here(sprintf("zooplankton/outputs/spring_smcope_model")),
+  season = "spring",
+  vast_settings = settings2 # different settings because 100% encounters
+)
+
+## small ALL Copepod models ----
+
+### fall ----
+# Fall first, no DOY or temp covariate
+# did not run in 2025 SOE, but including here for completeness
+run_vast_model(
+  data = smcopeall_fall,
+  out_dir = here::here(sprintf("zooplankton/outputs/fall_smcopeall_model")),
+  season = "fall",
+  vast_settings = settings2 # different settings because 100% encounters
+)
+
+### spring ----
+# run spring models, also with no DOY or temp covariates
+run_vast_model(
+  data = smcopeall_spring,
+  out_dir = here::here(sprintf("zooplankton/outputs/spring_smcopeall_model")),
   season = "spring",
   vast_settings = settings2 # different settings because 100% encounters
 )
@@ -373,7 +396,7 @@ run_vast_model(
 ### spring ----
 # run spring models, also with no DOY or temp covariates
 run_vast_model(
-  data = calfin_fall,
+  data = calfin_spring,
   out_dir = here::here(sprintf("zooplankton/outputs/spring_calfin_model")),
   season = "spring",
   vast_settings = settings

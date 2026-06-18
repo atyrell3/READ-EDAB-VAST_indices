@@ -1,0 +1,14 @@
+The following parameters appear to be approaching zero:
+        Param starting_value Lower          MLE Upper final_gradient
+44 L_omega1_z              1  -Inf -6.16776e-06   Inf   -0.001585986
+Please turn off factor-model variance parameters `L_` that are approaching zero and re-run the model
+
+
+Error: Please change model structure to avoid problems with parameter estimates and then re-try; see details in `?check_fit`
+In addition: Warning message:
+In nlminb(start = startpar, objective = fn, gradient = gr, control = nlminb.control,  :
+  NA/NaN function evaluation
+Called from: fit_model(settings = vast_settings, Lat_i = data$Lat, Lon_i = data$Lon, 
+    t_i = data$Year, b_i = as_units(data[, "Catch_g"], "g"), 
+    a_i = rep(1, nrow(data)), v_i = data$Vessel, working_dir = paste0(out_dir, 
+        "/"))
